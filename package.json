@@ -1,0 +1,16 @@
+{
+  "name": "ritmo",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Ritmo - board Kanban que mede sozinho e prevê o futuro - Projeto M2 de Métodos Ágeis (UMC)",
+  "type": "module",
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "build": "node scripts/build.mjs",
+    "dev": "npx --yes http-server . -p 8080 -c-1"
+  },
+  "devDependencies": {
+    "vitest": "^3.2.4"
+  }
+}
