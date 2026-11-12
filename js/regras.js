@@ -48,3 +48,88 @@ export function validarMovimento({ deColunaId, paraColuna, quantidadeNoDestino, 
   }
   return [];
 }
+
+// ---------- História 1: conta ----------
+
+/** Tamanho mínimo de senha (o mesmo padrão do Supabase Auth). */
+export const SENHA_MINIMA = 6;
+
+/**
+ * Confere e-mail e senha antes de mandar para o Supabase (login).
+ * O e-mail só precisa ter o formato "algo@algo.algo"; quem confirma se ele existe é o Supabase.
+ * @returns {string[]} lista de erros; vazia quando está tudo certo
+ */
+export function validarCredenciais({ email, senha }) {
+  const erros = [];
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test((email ?? '').trim())) {
+    erros.push('Informe um e-mail válido.');
+  }
+  if ((senha ?? '').length < SENHA_MINIMA) {
+    erros.push(`A senha precisa ter pelo menos ${SENHA_MINIMA} caracteres.`);
+  }
+  return erros;
+}
+
+/** Cadastro = nome obrigatório + as mesmas regras do login. */
+export function validarCadastro({ nome, email, senha }) {
+  const erros = [];
+  if ((nome ?? '').trim() === '') {
+    erros.push('Informe o seu nome.');
+  }
+  return erros.concat(validarCredenciais({ email, senha }));
+}
+
+/**
+ * Transforma o erro do Supabase Auth (em inglês) em uma mensagem em português.
+ * Procura primeiro pelo código do erro e, se não vier, pelo texto da mensagem.
+ */
+export function traduzirErroAuth(erro) {
+  const codigo = erro?.code ?? '';
+  const mensagem = erro?.message ?? '';
+  if (codigo === 'invalid_credentials' || mensagem.includes('Invalid login credentials')) {
+    return 'E-mail ou senha incorretos.';
+  }
+  if (codigo === 'user_already_exists' || mensagem.includes('already registered')) {
+    return 'Já existe uma conta com este e-mail.';
+  }
+  return 'Não foi possível entrar agora. Tente de novo em instantes.';
+}
+
+// ---------- História 1: board e colunas ----------
+
+/**
+ * Nome obrigatório de board ou coluna. Mesma regra do check do banco: length(trim(nome)) > 0.
+ * @param {string} nome
+ * @param {string} doQue "do board" ou "da coluna", só para montar a mensagem
+ */
+export function validarNome(nome, doQue) {
+  return (nome ?? '').trim() === '' ? [`Informe o nome ${doQue}.`] : [];
+}
+
+/**
+ * Troca a coluna de lugar com a vizinha (direcao -1 = sobe, +1 = desce) e renumera as posições 1..n.
+ * Devolve uma lista NOVA, ordenada; a original não muda. Na ponta, nada acontece.
+ * @param {{id: string, posicao: number}[]} colunas
+ * @param {string} id coluna que vai mudar de lugar
+ * @param {-1|1} direcao
+ */
+export function moverColunaNaOrdem(colunas, id, direcao) {
+  const lista = [...colunas].sort((x, y) => x.posicao - y.posicao);
+  const de = lista.findIndex((c) => c.id === id);
+  const para = de + direcao;
+  if (de !== -1 && para >= 0 && para < lista.length) {
+    [lista[de], lista[para]] = [lista[para], lista[de]];
+  }
+  return lista.map((c, i) => ({ ...c, posicao: i + 1 }));
+}
+
+/**
+ * "Excluir" coluna = arquivar: ela some do board, mas continua no banco para não estragar o histórico.
+ * Coluna com cartões não pode ser arquivada. Mesma regra da função arquivar_coluna no schema.sql.
+ * @param {number} quantidadeCartoes cartões que estão na coluna agora
+ */
+export function podeArquivarColuna(quantidadeCartoes) {
+  return quantidadeCartoes > 0
+    ? [`A coluna tem ${quantidadeCartoes} cartão(ões). Mova os cartões antes de excluir.`]
+    : [];
+}
