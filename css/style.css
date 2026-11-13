@@ -86,6 +86,7 @@ button.link { border: none; background: none; color: #3b2f8f; text-decoration: u
 .wip { font-weight: normal; color: #57606a; }
 .acoes { display: flex; flex-wrap: wrap; gap: .25rem; }
 .acoes button { padding: .25rem .5rem; font-size: .85rem; }
+.aviso-papel { margin: .5rem 0 0; font-size: .8rem; color: #57606a; }
 
 /* Celular: uma coluna embaixo da outra. */
 @media (max-width: 800px) {

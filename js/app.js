@@ -120,9 +120,8 @@ async function sair() {
   const { error } = await supabase.auth.signOut();
   if (error) {
     mostrarMensagem('Não foi possível sair. Tente de novo.');
-    return;
   }
-  voltarParaEntrar();
+  // Se deu certo, quem volta para a tela de entrar é o onAuthStateChange (evento SIGNED_OUT) abaixo.
 }
 
 /** Volta para a tela de entrar (depois de sair ou se a sessão acabar). */
@@ -250,6 +249,17 @@ async function desenharColunas() {
     const secao = document.createElement('section');
     secao.className = 'coluna';
     secao.append(titulo, acoes);
+
+    // Texto visível com o motivo do "Excluir" desativado (o title de botão desativado
+    // nem sempre aparece no navegador).
+    if (coluna.papel) {
+      const aviso = document.createElement('p');
+      aviso.className = 'aviso-papel';
+      aviso.textContent = coluna.papel === 'inicio'
+        ? 'Início do fluxo nas métricas: não pode ser excluída.'
+        : 'Fim do fluxo nas métricas: não pode ser excluída.';
+      secao.append(aviso);
+    }
     quadro.append(secao);
   });
 }

@@ -247,4 +247,13 @@ describe('podeArquivarColuna', () => {
     expect(podeArquivarColuna({ quantidadeCartoes: 3, papel: 'fim' })).toHaveLength(1);
     expect(podeArquivarColuna({ quantidadeCartoes: 3, papel: 'fim' })[0]).toContain('métricas');
   });
+
+  // Regra 2: as mensagens estão escritas nos dois lados (JS e arquivar_coluna no schema.sql).
+  it('usa as mesmas mensagens que a função arquivar_coluna do schema.sql', () => {
+    const sql = readFileSync(new URL('../supabase/schema.sql', import.meta.url), 'utf8');
+    expect(sql).toContain(podeArquivarColuna({ quantidadeCartoes: 0, papel: 'fim' })[0]);
+    // No banco, o número vem por %: 'A coluna tem % cartão(ões). Mova os cartões antes de excluir.'
+    const comCartoes = podeArquivarColuna({ quantidadeCartoes: 7, papel: null })[0];
+    expect(sql).toContain(comCartoes.replace('7', '%'));
+  });
 });
