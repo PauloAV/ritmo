@@ -42,8 +42,8 @@ button {
 button:hover:not(:disabled) { background: #eef0f4; }
 button:disabled { opacity: .4; cursor: default; }
 /* Enquanto uma ação está em andamento (app.js, função acao), os botões ficam apagados. */
-main[aria-busy="true"] button { opacity: .6; pointer-events: none; }
-main[aria-busy="true"] { cursor: progress; }
+body[aria-busy="true"] button { opacity: .6; pointer-events: none; }
+body[aria-busy="true"] { cursor: progress; }
 button[type="submit"] { background: #3b2f8f; border-color: #3b2f8f; color: #fff; }
 button.link { border: none; background: none; color: #3b2f8f; text-decoration: underline; padding: .5rem 0; }
 

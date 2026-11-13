@@ -31,12 +31,13 @@ let ocupado = false;
  * - ignora novos cliques enquanto a anterior não termina (evita board ou coluna duplicada);
  * - apaga a mensagem antiga antes de começar;
  * - se acontecer uma exceção inesperada (ex.: sem internet), avisa em vez de ficar muda.
- * Enquanto roda, <main aria-busy="true"> deixa os botões apagados (ver style.css).
+ * Enquanto roda, <body aria-busy="true"> deixa TODOS os botões apagados, inclusive o Sair do
+ * cabeçalho (ver style.css); assim ninguém clica num botão que seria ignorado sem aviso.
  */
 async function acao(fazer) {
   if (ocupado) return;
   ocupado = true;
-  $('main').setAttribute('aria-busy', 'true');
+  document.body.setAttribute('aria-busy', 'true');
   mostrarMensagem('');
   try {
     await fazer();
@@ -44,7 +45,7 @@ async function acao(fazer) {
     mostrarMensagem('Algo deu errado. Confira a sua conexão e tente de novo.');
   } finally {
     ocupado = false;
-    $('main').removeAttribute('aria-busy');
+    document.body.removeAttribute('aria-busy');
   }
 }
 

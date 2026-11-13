@@ -102,3 +102,5 @@ Regras deste arquivo:
 1. **Rodar a migração 001 no Supabase.** Sem ela, a tela da branch dá erro, porque busca a coluna `papel`.
 2. O Kauan revisa de novo o PR #12 e aprova.
 3. O Kauan faz o registro dele no `docs/registro-ia.md` (revisão com IA).
+4. **Erro da IA achado no teste do navegador depois da revisão:** com a `acao()`, um clique em **Sair** durante um carregamento era ignorado sem aviso. O Sair fica no cabeçalho, fora do `<main>`, e por isso não aparecia apagado. Corrigido: o estado "ocupado" agora fica no `<body>`, e todos os botões aparecem apagados.
+5. **Teste no navegador desta rodada, depois da migração 001:** passaram o clique duplo (1 board e 1 coluna só), a mensagem que some depois de um acerto, o Excluir desativado em Em andamento e Concluído, renomear coluna com papel, arquivar coluna sem papel e sair e entrar mantendo o board. Chamando o banco direto, sem a tela, ele recusou arquivar coluna com papel, excluir board e criar coluna com papel.
