@@ -1,13 +1,20 @@
 // Regras de negócio do Ritmo.
 // Funções puras (sem banco e sem tela) para poderem ser testadas com o Vitest.
 
-/** Colunas que todo board novo recebe (história 1). limiteWip null = sem limite. */
+/**
+ * Colunas que todo board novo recebe (história 1). limiteWip null = sem limite.
+ * papel marca as colunas que as métricas usam, para elas não dependerem do nome
+ * (o time pode renomear a coluna à vontade):
+ *   'inicio' = começo do trabalho (Cycle Time começa na primeira entrada aqui)
+ *   'fim'    = trabalho pronto (Lead Time e Cycle Time terminam na entrada aqui)
+ * Coluna com papel não pode ser arquivada; por isso todo board tem sempre pelo menos 2 colunas.
+ */
 export const COLUNAS_PADRAO = [
   { nome: 'Backlog', limiteWip: null },
   { nome: 'Sprint Backlog', limiteWip: null },
-  { nome: 'Em andamento', limiteWip: 2 },
+  { nome: 'Em andamento', limiteWip: 2, papel: 'inicio' },
   { nome: 'Em revisão', limiteWip: 2 },
-  { nome: 'Concluído', limiteWip: null },
+  { nome: 'Concluído', limiteWip: null, papel: 'fim' },
 ];
 
 /**
@@ -135,13 +142,18 @@ export function moverColunaNaOrdem(colunas, id, direcao) {
 
 /**
  * "Excluir" coluna = arquivar: ela some do board, mas continua no banco para não estragar o histórico.
- * Coluna com cartões não pode ser arquivada. Mesma regra da função arquivar_coluna no schema.sql.
- * @param {number} quantidadeCartoes cartões que estão na coluna agora
+ * Não pode: coluna com papel (usada nas métricas) e coluna com cartões.
+ * Mesma regra e mesma ordem da função arquivar_coluna no schema.sql (devolve uma mensagem só).
+ * @param {{quantidadeCartoes: number, papel: string|null}} coluna
  */
-export function podeArquivarColuna(quantidadeCartoes) {
-  return quantidadeCartoes > 0
-    ? [`A coluna tem ${quantidadeCartoes} cartão(ões). Mova os cartões antes de excluir.`]
-    : [];
+export function podeArquivarColuna({ quantidadeCartoes, papel }) {
+  if (papel) {
+    return ['Esta coluna marca o início ou o fim do fluxo nas métricas e não pode ser excluída. Você pode renomeá-la.'];
+  }
+  if (quantidadeCartoes > 0) {
+    return [`A coluna tem ${quantidadeCartoes} cartão(ões). Mova os cartões antes de excluir.`];
+  }
+  return [];
 }
 
 /**

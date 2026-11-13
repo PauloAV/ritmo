@@ -45,6 +45,8 @@ HTML, CSS e JavaScript puro (módulos ES, sem framework e sem bundler) · Supaba
    `COLUNAS_PADRAO`) precisa bater com o `schema.sql` (`mover_cartao`, `preparar_board`).
 3. **Métrica conferível.** Toda métrica tem teste com um exemplo pequeno calculado à mão, e a definição
    fica escrita no código (ex.: Cycle Time = primeira entrada em "Em andamento" até "Concluído").
+   As métricas acham essas colunas pelo `papel` (`'inicio'` / `'fim'`), **nunca pelo nome**, que o
+   time pode mudar. Coluna com papel não pode ser arquivada.
 4. **Simulação testável.** O Monte Carlo recebe o sorteio (semente) por parâmetro; nos testes a semente
    é fixa e o resultado é sempre o mesmo. Nunca use `Math.random()` direto dentro da regra.
 5. **Datas sem surpresa.** Guarde em UTC (`timestamptz`) e converta para o fuso de São Paulo só na tela.

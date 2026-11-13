@@ -19,15 +19,25 @@ describe('COLUNAS_PADRAO', () => {
       .toEqual(['Em andamento', 'Em revisão']);
   });
 
+  it('marca o papel das colunas usadas nas métricas: início = Em andamento, fim = Concluído', () => {
+    expect(COLUNAS_PADRAO.filter((c) => c.papel).map((c) => `${c.papel}:${c.nome}`))
+      .toEqual(['inicio:Em andamento', 'fim:Concluído']);
+  });
+
   // Regra 2 do CLAUDE.md: o que está em regras.js precisa bater com o schema.sql.
-  it('é igual às colunas que o preparar_board do schema.sql cria (nome, posição e WIP)', () => {
+  it('é igual às colunas que o preparar_board do schema.sql cria (nome, posição, WIP e papel)', () => {
     const sql = readFileSync(new URL('../supabase/schema.sql', import.meta.url), 'utf8');
-    // Cada linha do insert é assim: (new.id, 'Em andamento',   3, 2),
-    const linhas = [...sql.matchAll(/\(new\.id,\s*'([^']+)',\s*(\d+),\s*(null|\d+)\)/g)];
-    const doBanco = linhas.map(([, nome, posicao, wip]) => ({
-      nome, posicao: Number(posicao), limiteWip: wip === 'null' ? null : Number(wip),
+    // Cada linha do insert é assim: (new.id, 'Em andamento',   3, 2,    'inicio'),
+    const linhas = [...sql.matchAll(/\(new\.id,\s*'([^']+)',\s*(\d+),\s*(null|\d+),\s*(null|'\w+')\)/g)];
+    const doBanco = linhas.map(([, nome, posicao, wip, papel]) => ({
+      nome,
+      posicao: Number(posicao),
+      limiteWip: wip === 'null' ? null : Number(wip),
+      papel: papel === 'null' ? null : papel.replaceAll("'", ''),
     }));
-    const doApp = COLUNAS_PADRAO.map((c, i) => ({ nome: c.nome, posicao: i + 1, limiteWip: c.limiteWip }));
+    const doApp = COLUNAS_PADRAO.map((c, i) => ({
+      nome: c.nome, posicao: i + 1, limiteWip: c.limiteWip, papel: c.papel ?? null,
+    }));
     expect(doBanco).toEqual(doApp);
   });
 });
@@ -218,12 +228,23 @@ describe('colunasQueMudaram', () => {
 });
 
 describe('podeArquivarColuna', () => {
-  it('coluna vazia pode ser excluída (arquivada)', () => {
-    expect(podeArquivarColuna(0)).toEqual([]);
+  it('coluna vazia e sem papel pode ser excluída (arquivada)', () => {
+    expect(podeArquivarColuna({ quantidadeCartoes: 0, papel: null })).toEqual([]);
   });
 
   it('coluna com cartões não pode, com a mesma mensagem do banco (arquivar_coluna)', () => {
-    expect(podeArquivarColuna(2))
+    expect(podeArquivarColuna({ quantidadeCartoes: 2, papel: null }))
       .toEqual(['A coluna tem 2 cartão(ões). Mova os cartões antes de excluir.']);
+  });
+
+  it('coluna usada nas métricas (com papel) não pode, mesmo vazia; renomear continua livre', () => {
+    const mensagem = 'Esta coluna marca o início ou o fim do fluxo nas métricas e não pode ser excluída. Você pode renomeá-la.';
+    expect(podeArquivarColuna({ quantidadeCartoes: 0, papel: 'inicio' })).toEqual([mensagem]);
+    expect(podeArquivarColuna({ quantidadeCartoes: 0, papel: 'fim' })).toEqual([mensagem]);
+  });
+
+  it('papel vem antes dos cartões, na mesma ordem do banco (uma mensagem só)', () => {
+    expect(podeArquivarColuna({ quantidadeCartoes: 3, papel: 'fim' })).toHaveLength(1);
+    expect(podeArquivarColuna({ quantidadeCartoes: 3, papel: 'fim' })[0]).toContain('métricas');
   });
 });

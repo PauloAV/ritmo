@@ -36,7 +36,12 @@ create table public.colunas (
   -- "Excluir" coluna = arquivar (história 1): some do board, mas fica no banco,
   -- porque os movimentos antigos apontam para ela e o histórico não pode ser apagado.
   arquivada  boolean not null default false,
-  unique (board_id, id)
+  -- Colunas que as métricas usam, para não dependerem do nome (que o time pode mudar):
+  -- 'inicio' = começo do trabalho (Cycle Time), 'fim' = pronto (Lead e Cycle Time).
+  -- Só preparar_board define o papel; coluna com papel não pode ser arquivada.
+  papel      text check (papel in ('inicio', 'fim')),
+  unique (board_id, id),
+  unique (board_id, papel)  -- um início e um fim por board (vários null são permitidos)
 );
 
 create table public.cartoes (
@@ -84,12 +89,12 @@ create function public.preparar_board() returns trigger
 language plpgsql security definer set search_path = public as $$
 begin
   insert into public.membros (board_id, usuario_id) values (new.id, new.criado_por);
-  insert into public.colunas (board_id, nome, posicao, limite_wip) values
-    (new.id, 'Backlog',        1, null),
-    (new.id, 'Sprint Backlog', 2, null),
-    (new.id, 'Em andamento',   3, 2),
-    (new.id, 'Em revisão',     4, 2),
-    (new.id, 'Concluído',      5, null);
+  insert into public.colunas (board_id, nome, posicao, limite_wip, papel) values
+    (new.id, 'Backlog',        1, null, null),
+    (new.id, 'Sprint Backlog', 2, null, null),
+    (new.id, 'Em andamento',   3, 2,    'inicio'),
+    (new.id, 'Em revisão',     4, 2,    null),
+    (new.id, 'Concluído',      5, null, 'fim');
   return new;
 end $$;
 
@@ -185,8 +190,9 @@ begin
   return v_mov;
 end $$;
 
--- "Excluir" (arquivar) uma coluna (história 1). Coluna com cartões não pode.
--- Mesma regra de podeArquivarColuna em js/regras.js.
+-- "Excluir" (arquivar) uma coluna (história 1). Não pode: coluna com papel (métricas)
+-- e coluna com cartões. Mesma regra e mesma ordem de podeArquivarColuna em js/regras.js.
+-- Como as 2 colunas com papel nunca saem, o board nunca fica sem colunas.
 -- No app: supabase.rpc('arquivar_coluna', { p_coluna: idColuna })
 create function public.arquivar_coluna(p_coluna uuid) returns void
 language plpgsql security definer set search_path = public as $$
@@ -197,6 +203,10 @@ begin
   select * into v_coluna from public.colunas where id = p_coluna for update;
   if v_coluna.id is null or not public.eh_membro(v_coluna.board_id) then
     raise exception 'Coluna não encontrada.';
+  end if;
+
+  if v_coluna.papel is not null then
+    raise exception 'Esta coluna marca o início ou o fim do fluxo nas métricas e não pode ser excluída. Você pode renomeá-la.';
   end if;
 
   select count(*) into v_qtd from public.cartoes where coluna_id = v_coluna.id;
@@ -218,11 +228,16 @@ revoke insert, update, delete on public.movimentos from anon, authenticated;
 -- virar "dono" e excluir o board (o que apagaria o histórico junto).
 revoke update on public.boards from anon, authenticated;
 grant update (nome) on public.boards to authenticated;
+-- Board não é excluído por ninguém: o cascade apagaria cartões e movimentos (histórico).
+revoke delete on public.boards from anon, authenticated;
 
 -- Colunas: membros mudam nome, posição, WIP e política. Arquivar só por arquivar_coluna,
 -- e ninguém apaga coluna de verdade (os movimentos apontam para ela).
 revoke update, delete on public.colunas from anon, authenticated;
 grant update (nome, posicao, limite_wip, politica) on public.colunas to authenticated;
+-- Coluna nova: o membro não escolhe papel nem arquivada (só preparar_board define o papel).
+revoke insert on public.colunas from anon, authenticated;
+grant insert (board_id, nome, posicao, limite_wip, politica) on public.colunas to authenticated;
 
 -- ============ Regras de acesso (Row Level Security) ============
 
@@ -252,8 +267,7 @@ create policy "criar board" on public.boards for insert to authenticated
 with check (criado_por = auth.uid());
 create policy "editar board do time" on public.boards for update to authenticated
 using (public.eh_membro(id)) with check (public.eh_membro(id));
-create policy "excluir board que criei" on public.boards for delete to authenticated
-using (criado_por = auth.uid());
+-- Sem política de delete: board não é excluído (decisão do PO; o histórico é sagrado).
 
 -- Membros: entrar só pela função entrar_no_board; sair é livre.
 create policy "ver membros do time" on public.membros for select to authenticated

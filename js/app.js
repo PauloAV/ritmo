@@ -207,7 +207,7 @@ $('#voltar').addEventListener('click', () => acao(abrirMeusBoards));
 /** Busca as colunas (sem as arquivadas) e quantos cartões há em cada uma, e desenha o quadro. */
 async function desenharColunas() {
   const [colunas, cartoes] = await Promise.all([
-    supabase.from('colunas').select('id, nome, posicao, limite_wip')
+    supabase.from('colunas').select('id, nome, posicao, limite_wip, papel')
       .eq('board_id', boardAtual.id).eq('arquivada', false).order('posicao'),
     supabase.from('cartoes').select('coluna_id').eq('board_id', boardAtual.id),
   ]);
@@ -240,8 +240,10 @@ async function desenharColunas() {
         () => acao(() => reordenarColuna(coluna.id, -1)), i === 0),
       criarBotao('→', `Mover ${coluna.nome} uma posição para frente`,
         () => acao(() => reordenarColuna(coluna.id, +1)), i === colunasAtuais.length - 1),
-      criarBotao('Excluir', `Excluir a coluna ${coluna.nome}`,
-        () => acao(() => excluirColuna(coluna, quantidade))),
+      // Colunas com papel (início/fim das métricas) não podem ser excluídas: o botão já vem desativado.
+      criarBotao('Excluir',
+        coluna.papel ? `${coluna.nome} é usada nas métricas e não pode ser excluída` : `Excluir a coluna ${coluna.nome}`,
+        () => acao(() => excluirColuna(coluna, quantidade)), Boolean(coluna.papel)),
     );
 
     const secao = document.createElement('section');
@@ -282,7 +284,7 @@ async function reordenarColuna(idColuna, direcao) {
 }
 
 async function excluirColuna(coluna, quantidadeCartoes) {
-  const erros = podeArquivarColuna(quantidadeCartoes);
+  const erros = podeArquivarColuna({ quantidadeCartoes, papel: coluna.papel });
   if (erros.length > 0) {
     mostrarMensagem(erros.join(' '));
     return;

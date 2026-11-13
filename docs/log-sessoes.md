@@ -71,3 +71,34 @@ Regras deste arquivo:
 5. **"X" vermelho na `main`:** é o deploy de 11/11, que falhou porque os Secrets ainda não existiam ("Faltam as variáveis SUPABASE_URL e/ou SUPABASE_ANON_KEY"). Os Secrets já estão criados, e o próximo deploy sai no merge do PR #12.
 6. Quando o site estiver no ar, trocar "_(link do GitHub Pages)_" no README pelo link real.
 7. Se o `esm.sh` (CDN do supabase-js) continuar lento, trocar pelo jsDelivr, sem dependência nova.
+
+---
+
+## 12/11/2026 (noite) · Paulo · Sprint 1 · revisão do PR #12
+
+### O que aconteceu
+1. **O Kauan revisou o PR #12** com ajuda do Claude, pelo terminal (`gh`). Mandou 14 comentários nas linhas e um resumo.
+   Quase tudo procedia. Dois "bugs" eram exagerados: o `supabase-js` já devolve erro de rede em `error` e já renova o token sozinho. Mesmo assim, entraram proteções simples para os dois.
+2. **Correções (commit `27c82e8`):**
+   - Toda ação da tela passa por `acao()` em `js/app.js`: um clique por vez, mensagem antiga apagada, aviso em exceção e botões apagados durante o pedido.
+   - `signOut` confere o erro, e `onAuthStateChange` volta para "Entrar" quando a sessão termina.
+   - `traduzirErroAuth` cobre mais erros.
+   - `proximaPosicao` e `colunasQueMudaram` foram para o `regras.js`, com teste.
+   - Novo teste lê o `schema.sql` e compara com `COLUNAS_PADRAO` (regra 2). Foi provado que ele falha quando os dois lados divergem.
+3. **Decisões do PO depois da revisão:**
+   - Senha com menos de 6 caracteres no login continua mostrando "precisa ter 6 caracteres" (fica como está).
+   - **Board não pode ser excluído**, por ninguém.
+   - **O board nunca fica sem colunas.**
+   - **Campo `colunas.papel`** (`'inicio'` em Em andamento, `'fim'` em Concluído). As métricas (H5 em diante) acham as colunas pelo papel, não pelo nome. Coluna com papel pode ser renomeada, mas não arquivada. Isso também garante o item anterior.
+4. **Primeira migração:** `supabase/migracoes/001-papel-e-protecoes.sql`. A partir de agora, toda mudança no banco ganha um arquivo numerado ali, além de entrar no `schema.sql`.
+
+### Ficou para depois
+- **Sprint 2:**
+  - reordenar colunas numa transação só (função `reordenar_colunas`);
+  - testes do banco (`arquivar_coluna`, `grant`/`revoke`).
+- **H2:** impedir que o usuário escolha o `codigo_convite` no insert do board (dar `grant insert (nome)` em `boards`).
+
+### Pendências novas
+1. **Rodar a migração 001 no Supabase.** Sem ela, a tela da branch dá erro, porque busca a coluna `papel`.
+2. O Kauan revisa de novo o PR #12 e aprova.
+3. O Kauan faz o registro dele no `docs/registro-ia.md` (revisão com IA).
