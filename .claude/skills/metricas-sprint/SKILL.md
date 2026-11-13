@@ -13,15 +13,18 @@ Nunca invente número. Toda conta precisa poder ser refeita pelo time.
 
 ## Dados
 1. Datas das issues: `gh issue list --state all --label história --json number,title,createdAt,closedAt,labels`
-2. Pontos (campo "Pontos" do board): `gh project item-list <nº do board> --owner <dono> --format json`
+2. Pontos e início (campos "Pontos" e "Início" do board):
+   `gh project item-list 3 --owner PauloAV --format json` (no JSON, o campo aparece como `"início"`).
 3. Início do trabalho (para o Cycle Time): o GitHub não guarda quando o cartão foi para
-   "Em andamento". Use `docs/metricas/datas.csv` (colunas: `historia,inicio`), que o time preenche
-   no dia em que move o cartão. Se faltar alguma data, pergunte; não estime.
+   "Em andamento", por isso a Action `.github/workflows/board.yml` grava a data no campo "Início"
+   quando a branch `historia-N-...` é enviada (só se o cartão estava em "Sprint Backlog").
+   Se faltar alguma data, pergunte; não estime. Atenção: a data é a do **push** da branch; se alguém
+   começou antes e enviou a branch depois, pergunte ao time a data real e use a do time.
 4. Datas da Sprint: veja o CLAUDE.md.
 
 ## Definições (escreva-as junto com os valores no relatório)
 - **Lead Time** = fechamento da issue − criação da issue (dias), média das histórias concluídas.
-- **Cycle Time** = fechamento − início (`datas.csv`), média das histórias concluídas.
+- **Cycle Time** = fechamento − início (campo "Início" do board), média das histórias concluídas.
 - **Throughput** = número de histórias concluídas na Sprint.
 - **Velocity** = soma dos pontos das histórias concluídas (história pela metade conta zero).
 - **Burndown** = pontos restantes no fim de cada dia da Sprint (planejado × real).
