@@ -8,6 +8,9 @@ Board Kanban com colunas e limite de WIP que registra a data de cada movimento d
 desse histórico, calcula sozinho Lead Time, Cycle Time, Throughput, burndown e CFD e prevê, com
 probabilidade (Monte Carlo), quando o trabalho restante fica pronto. Visão geral: @README.md
 
+**Antes de começar qualquer tarefa,** leia o log das sessões anteriores (contexto, decisões e
+pendências): @docs/log-sessoes.md
+
 ## Time
 - Paulo Augusto de Jesus Vilela – Product Owner e Desenvolvedor
 - Kauan Ferreira da Silva – Scrum Master e Desenvolvedor
@@ -33,6 +36,7 @@ HTML, CSS e JavaScript puro (módulos ES, sem framework e sem bundler) · Supaba
 - `js/app.js` – telas e eventos; `js/supabase.js` – cliente do Supabase
 - `tests/` – testes do Vitest; `supabase/schema.sql` – tabelas, funções e RLS
 - `docs/registro-ia.md` – Registro de Uso da IA; `docs/metricas/` – dados das nossas métricas
+- `docs/log-sessoes.md` – log das sessões com o Claude; ao terminar uma sessão, acrescente um resumo no fim
 
 ## Regras que não podem ser quebradas
 1. **O histórico é sagrado.** A tabela `movimentos` nunca é editada nem apagada. A coluna de um cartão
