@@ -17,7 +17,9 @@ Nunca invente número. Toda conta precisa poder ser refeita pelo time.
    `gh project item-list 3 --owner PauloAV --format json` (no JSON, o campo aparece como `"início"`).
 3. Início do trabalho (para o Cycle Time): o GitHub não guarda quando o cartão foi para
    "Em andamento", por isso a Action `.github/workflows/board.yml` grava a data no campo "Início"
-   quando a branch `historia-N-...` é enviada. Se faltar alguma data, pergunte; não estime.
+   quando a branch `historia-N-...` é enviada (só se o cartão estava em "Sprint Backlog").
+   Se faltar alguma data, pergunte; não estime. Atenção: a data é a do **push** da branch; se alguém
+   começou antes e enviou a branch depois, pergunte ao time a data real e use a do time.
 4. Datas da Sprint: veja o CLAUDE.md.
 
 ## Definições (escreva-as junto com os valores no relatório)

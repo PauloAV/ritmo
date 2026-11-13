@@ -1,10 +1,15 @@
 # Automação do board (GitHub Projects "Ritmo").
-# Quando uma branch "historia-N-..." chega ao GitHub, a issue N vai para "Em andamento"
-# e o campo "Início" recebe a data do dia (é dele que sai o Cycle Time do nosso projeto).
+# Quando uma branch "historia-N-..." chega ao GitHub e a issue N está em "Sprint Backlog",
+# ela vai para "Em andamento" e o campo "Início" recebe a data do dia (é dele que sai o
+# Cycle Time do nosso projeto). Em qualquer outra coluna, o cartão não é movido (só um aviso).
 # "Em revisão" (PR aberto) e "Concluído" (issue fechada) ficam com os workflows do próprio board.
 #
-# Precisa do secret PROJECT_TOKEN: token (classic) com os escopos "project" e "repo".
-# O GITHUB_TOKEN padrão não consegue mexer em board de usuário.
+# Atenção:
+# - No evento create, o GitHub usa ESTE arquivo da branch criada: a branch precisa sair da main
+#   que já tem o board.yml. E o GitHub não dispara create se mais de 3 branches/tags forem
+#   enviadas no mesmo push.
+# - Precisa do secret PROJECT_TOKEN (token classic com o escopo "project"; o GITHUB_TOKEN padrão
+#   não mexe em board de usuário). Quando o token vencer, a Action falha: gere outro e troque o secret.
 name: Board
 
 on:
@@ -12,6 +17,12 @@ on:
 
 permissions:
   contents: read
+
+# Uma execução por vez: se duas branches chegarem juntas, a segunda espera a primeira mover o
+# cartão, e a conta do WIP sai certa.
+concurrency:
+  group: board
+  cancel-in-progress: false
 
 jobs:
   em-andamento:
@@ -42,21 +53,30 @@ jobs:
           ANDAMENTO_ID=$(echo "$CAMPOS" | jq -r '.fields[] | select(.name == "Status") | .options[] | select(.name == "Em andamento") | .id')
           INICIO_ID=$(echo "$CAMPOS" | jq -r '.fields[] | select(.name == "Início") | .id')
 
-          # O cartão da issue N.
+          # O cartão da issue N DESTE repositório (o board poderia ter issues de outro repo com o mesmo número).
           ITENS=$(gh project item-list "$PROJETO" --owner "$DONO" --limit 200 --format json)
-          CARTAO=$(echo "$ITENS" | jq -c --argjson n "$N" '.items[] | select(.content.type == "Issue" and .content.number == $n)')
+          CARTAO=$(echo "$ITENS" | jq -c --argjson n "$N" --arg repo "$GITHUB_REPOSITORY" \
+            '.items[] | select(.content.type == "Issue" and .content.number == $n and .content.repository == $repo)')
           if [ -z "$CARTAO" ]; then
             echo "::warning::A issue #$N não está no board."
             exit 0
           fi
           ITEM_ID=$(echo "$CARTAO" | jq -r .id)
 
+          # Só move quem está em "Sprint Backlog". Assim, uma branch de correção de uma história
+          # já Concluída não a puxa de volta, e uma história do Backlog não pula o Sprint Planning.
+          STATUS_ATUAL=$(echo "$CARTAO" | jq -r '.status // ""')
+          if [ "$STATUS_ATUAL" != "Sprint Backlog" ]; then
+            echo "::warning::A issue #$N está em \"$STATUS_ATUAL\", não em \"Sprint Backlog\"; o cartão não foi movido."
+            exit 0
+          fi
+
           gh project item-edit --id "$ITEM_ID" --project-id "$PROJ_ID" \
             --field-id "$STATUS_ID" --single-select-option-id "$ANDAMENTO_ID" > /dev/null
-          echo "Issue #$N movida para Em andamento."
+          echo "Issue #$N movida de Sprint Backlog para Em andamento."
 
-          # Início só é gravado na primeira vez (voltar a mexer na história não muda a data).
-          # A data é a do calendário de São Paulo, que é o dia em que o time começou.
+          # Início só é gravado se estiver vazio (se a história voltou ao Sprint Backlog e recomeçou,
+          # vale a primeira data). A data é a do calendário de São Paulo: o dia em que o time começou.
           if [ "$(echo "$CARTAO" | jq -r '.["início"] // ""')" = "" ]; then
             HOJE=$(TZ=America/Sao_Paulo date +%Y-%m-%d)
             gh project item-edit --id "$ITEM_ID" --project-id "$PROJ_ID" \
@@ -67,9 +87,8 @@ jobs:
           fi
 
           # Aviso de WIP (não bloqueia: só avisa no resumo da Action).
-          # Conta pelo board antigo + 1 se este cartão acabou de entrar na coluna.
-          QTD=$(echo "$ITENS" | jq --argjson n "$N" \
-            '[.items[] | select(.status == "Em andamento" or (.content.number == $n and .content.type == "Issue"))] | length')
+          # Cartões que já estavam em "Em andamento" + este, que acabou de entrar.
+          QTD=$(echo "$ITENS" | jq '[.items[] | select(.status == "Em andamento")] | length + 1')
           if [ "$QTD" -gt "$LIMITE_WIP" ]; then
             echo "::warning::Em andamento está com $QTD cartões (WIP $LIMITE_WIP)."
           fi
