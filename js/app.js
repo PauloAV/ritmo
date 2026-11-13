@@ -4,7 +4,7 @@
 import { supabase } from './supabase.js';
 import {
   situacaoWip, validarCredenciais, validarCadastro, traduzirErroAuth,
-  validarNome, moverColunaNaOrdem, podeArquivarColuna,
+  validarNome, moverColunaNaOrdem, podeArquivarColuna, proximaPosicao, colunasQueMudaram,
 } from './regras.js';
 
 const $ = (seletor) => document.querySelector(seletor);
@@ -22,6 +22,30 @@ function mostrarTela(id) {
 /** Mensagem de erro ou aviso no topo da página. */
 function mostrarMensagem(texto) {
   $('#status').textContent = texto;
+}
+
+let ocupado = false;
+
+/**
+ * Roda uma ação do usuário (entrar, criar, renomear, mover...), uma de cada vez:
+ * - ignora novos cliques enquanto a anterior não termina (evita board ou coluna duplicada);
+ * - apaga a mensagem antiga antes de começar;
+ * - se acontecer uma exceção inesperada (ex.: sem internet), avisa em vez de ficar muda.
+ * Enquanto roda, <main aria-busy="true"> deixa os botões apagados (ver style.css).
+ */
+async function acao(fazer) {
+  if (ocupado) return;
+  ocupado = true;
+  $('main').setAttribute('aria-busy', 'true');
+  mostrarMensagem('');
+  try {
+    await fazer();
+  } catch {
+    mostrarMensagem('Algo deu errado. Confira a sua conexão e tente de novo.');
+  } finally {
+    ocupado = false;
+    $('main').removeAttribute('aria-busy');
+  }
 }
 
 /** Cria um botão. rotulo = texto lido pelo leitor de tela (útil quando o botão é só uma seta). */
@@ -54,8 +78,12 @@ $('#trocar-modo').addEventListener('click', () => {
   atualizarModo();
 });
 
-$('#form-entrar').addEventListener('submit', async (evento) => {
+$('#form-entrar').addEventListener('submit', (evento) => {
   evento.preventDefault();
+  acao(entrar);
+});
+
+async function entrar() {
   const dados = { nome: $('#nome').value, email: $('#email').value.trim(), senha: $('#senha').value };
 
   // 1º confere no navegador (regras.js); só depois chama o Supabase.
@@ -82,15 +110,32 @@ $('#form-entrar').addEventListener('submit', async (evento) => {
     return;
   }
   $('#form-entrar').reset();
-  abrirMeusBoards();
-});
+  await abrirMeusBoards();
+}
 
-$('#sair').addEventListener('click', async () => {
-  await supabase.auth.signOut();
+$('#sair').addEventListener('click', () => acao(sair));
+
+async function sair() {
+  const { error } = await supabase.auth.signOut();
+  if (error) {
+    mostrarMensagem('Não foi possível sair. Tente de novo.');
+    return;
+  }
+  voltarParaEntrar();
+}
+
+/** Volta para a tela de entrar (depois de sair ou se a sessão acabar). */
+function voltarParaEntrar() {
   $('#sair').hidden = true;
   modoCadastro = false; // quem acabou de sair quer "Entrar", não "Criar conta"
   atualizarModo();
   mostrarTela('tela-entrar');
+}
+
+// Se a sessão acabar por outro motivo (ex.: saiu em outra aba), a tela acompanha.
+// O supabase-js já renova o token sozinho; este aviso cobre o caso em que a sessão é encerrada.
+supabase.auth.onAuthStateChange((evento) => {
+  if (evento === 'SIGNED_OUT') voltarParaEntrar();
 });
 
 // ---------- Tela 2: meus boards ----------
@@ -116,13 +161,17 @@ async function abrirMeusBoards() {
   }
   for (const board of boards) {
     const item = document.createElement('li');
-    item.append(criarBotao(board.nome, `Abrir o board ${board.nome}`, () => abrirBoard(board)));
+    item.append(criarBotao(board.nome, `Abrir o board ${board.nome}`, () => acao(() => abrirBoard(board))));
     lista.append(item);
   }
 }
 
-$('#form-board').addEventListener('submit', async (evento) => {
+$('#form-board').addEventListener('submit', (evento) => {
   evento.preventDefault();
+  acao(criarBoard);
+});
+
+async function criarBoard() {
   const nome = $('#nome-board-novo').value;
   const erros = validarNome(nome, 'do board');
   if (erros.length > 0) {
@@ -138,8 +187,8 @@ $('#form-board').addEventListener('submit', async (evento) => {
     return;
   }
   $('#form-board').reset();
-  abrirBoard(board);
-});
+  await abrirBoard(board);
+}
 
 // ---------- Tela 3: o board com as colunas ----------
 
@@ -153,7 +202,7 @@ async function abrirBoard(board) {
   await desenharColunas();
 }
 
-$('#voltar').addEventListener('click', () => abrirMeusBoards());
+$('#voltar').addEventListener('click', () => acao(abrirMeusBoards));
 
 /** Busca as colunas (sem as arquivadas) e quantos cartões há em cada uma, e desenha o quadro. */
 async function desenharColunas() {
@@ -186,12 +235,13 @@ async function desenharColunas() {
     const acoes = document.createElement('div');
     acoes.className = 'acoes';
     acoes.append(
-      criarBotao('Renomear', `Renomear a coluna ${coluna.nome}`, () => renomearColuna(coluna)),
+      criarBotao('Renomear', `Renomear a coluna ${coluna.nome}`, () => acao(() => renomearColuna(coluna))),
       criarBotao('←', `Mover ${coluna.nome} uma posição para trás`,
-        () => reordenarColuna(coluna.id, -1), i === 0),
+        () => acao(() => reordenarColuna(coluna.id, -1)), i === 0),
       criarBotao('→', `Mover ${coluna.nome} uma posição para frente`,
-        () => reordenarColuna(coluna.id, +1), i === colunasAtuais.length - 1),
-      criarBotao('Excluir', `Excluir a coluna ${coluna.nome}`, () => excluirColuna(coluna, quantidade)),
+        () => acao(() => reordenarColuna(coluna.id, +1)), i === colunasAtuais.length - 1),
+      criarBotao('Excluir', `Excluir a coluna ${coluna.nome}`,
+        () => acao(() => excluirColuna(coluna, quantidade))),
     );
 
     const secao = document.createElement('section');
@@ -218,11 +268,10 @@ async function renomearColuna(coluna) {
 }
 
 async function reordenarColuna(idColuna, direcao) {
-  // regras.js calcula a nova ordem; aqui só gravamos as colunas cuja posição mudou.
+  // regras.js calcula a nova ordem e quais colunas mudaram; aqui só gravamos essas.
+  // (Ainda são updates separados; uma função no banco que grave tudo de uma vez fica para a Sprint 2.)
   const novaOrdem = moverColunaNaOrdem(colunasAtuais, idColuna, direcao);
-  const mudaram = novaOrdem.filter(
-    (nova) => nova.posicao !== colunasAtuais.find((antiga) => antiga.id === nova.id).posicao,
-  );
+  const mudaram = colunasQueMudaram(colunasAtuais, novaOrdem);
   const resultados = await Promise.all(
     mudaram.map((c) => supabase.from('colunas').update({ posicao: c.posicao }).eq('id', c.id)),
   );
@@ -250,25 +299,28 @@ async function excluirColuna(coluna, quantidadeCartoes) {
   await desenharColunas();
 }
 
-$('#form-coluna').addEventListener('submit', async (evento) => {
+$('#form-coluna').addEventListener('submit', (evento) => {
   evento.preventDefault();
+  acao(criarColuna);
+});
+
+async function criarColuna() {
   const nome = $('#nome-coluna-nova').value;
   const erros = validarNome(nome, 'da coluna');
   if (erros.length > 0) {
     mostrarMensagem(erros.join(' '));
     return;
   }
-  // A coluna nova entra no fim: maior posição + 1.
-  const ultimaPosicao = Math.max(0, ...colunasAtuais.map((c) => c.posicao));
+  // A coluna nova entra no fim (proximaPosicao, em regras.js).
   const { error } = await supabase.from('colunas')
-    .insert({ board_id: boardAtual.id, nome: nome.trim(), posicao: ultimaPosicao + 1 });
+    .insert({ board_id: boardAtual.id, nome: nome.trim(), posicao: proximaPosicao(colunasAtuais) });
   if (error) {
     mostrarMensagem('Não foi possível criar a coluna.');
     return;
   }
   $('#form-coluna').reset();
   await desenharColunas();
-});
+}
 
 // ---------- Início ----------
 // A sessão do Supabase fica guardada no navegador: quem já entrou vai direto para os boards.
@@ -278,7 +330,7 @@ if (error) {
   mostrarTela('tela-entrar');
   mostrarMensagem('Não foi possível conectar ao Supabase.');
 } else if (session) {
-  abrirMeusBoards();
+  acao(abrirMeusBoards);
 } else {
   mostrarTela('tela-entrar');
 }

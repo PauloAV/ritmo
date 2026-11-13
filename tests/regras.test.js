@@ -1,8 +1,9 @@
 import { describe, it, expect } from 'vitest';
+import { readFileSync } from 'node:fs';
 import {
   COLUNAS_PADRAO, situacaoWip, validarMovimento,
   validarCredenciais, validarCadastro, traduzirErroAuth, validarNome,
-  moverColunaNaOrdem, podeArquivarColuna,
+  moverColunaNaOrdem, podeArquivarColuna, proximaPosicao, colunasQueMudaram,
 } from '../js/regras.js';
 
 // Dados fictícios: nada de nome, e-mail ou dado real nos testes.
@@ -16,6 +17,18 @@ describe('COLUNAS_PADRAO', () => {
     );
     expect(COLUNAS_PADRAO.filter((c) => c.limiteWip === 2).map((c) => c.nome))
       .toEqual(['Em andamento', 'Em revisão']);
+  });
+
+  // Regra 2 do CLAUDE.md: o que está em regras.js precisa bater com o schema.sql.
+  it('é igual às colunas que o preparar_board do schema.sql cria (nome, posição e WIP)', () => {
+    const sql = readFileSync(new URL('../supabase/schema.sql', import.meta.url), 'utf8');
+    // Cada linha do insert é assim: (new.id, 'Em andamento',   3, 2),
+    const linhas = [...sql.matchAll(/\(new\.id,\s*'([^']+)',\s*(\d+),\s*(null|\d+)\)/g)];
+    const doBanco = linhas.map(([, nome, posicao, wip]) => ({
+      nome, posicao: Number(posicao), limiteWip: wip === 'null' ? null : Number(wip),
+    }));
+    const doApp = COLUNAS_PADRAO.map((c, i) => ({ nome: c.nome, posicao: i + 1, limiteWip: c.limiteWip }));
+    expect(doBanco).toEqual(doApp);
   });
 });
 
@@ -80,6 +93,14 @@ describe('validarCredenciais (login)', () => {
     expect(validarCredenciais({ email: 'ana@teste.com', senha: '12345' }))
       .toEqual(['A senha precisa ter pelo menos 6 caracteres.']);
   });
+
+  it('aceita senha com exatamente 6 caracteres (o limite)', () => {
+    expect(validarCredenciais({ email: 'ana@teste.com', senha: '123456' })).toEqual([]);
+  });
+
+  it('aceita e-mail com espaços nas pontas (são ignorados)', () => {
+    expect(validarCredenciais({ email: '  ana@teste.com  ', senha: 'segredo1' })).toEqual([]);
+  });
 });
 
 describe('validarCadastro', () => {
@@ -104,9 +125,21 @@ describe('traduzirErroAuth', () => {
     expect(traduzirErroAuth({ message: 'User already registered' })).toBe('Já existe uma conta com este e-mail.');
   });
 
-  it('erro desconhecido mostra uma mensagem genérica', () => {
-    expect(traduzirErroAuth({ message: 'Something odd' }))
-      .toBe('Não foi possível entrar agora. Tente de novo em instantes.');
+  it('traduz os erros do cadastro e de limite de tentativas', () => {
+    expect(traduzirErroAuth({ code: 'weak_password' }))
+      .toBe('A senha é fraca demais. Escolha uma senha mais forte.');
+    expect(traduzirErroAuth({ code: 'email_not_confirmed' }))
+      .toBe('Confirme o seu e-mail pelo link enviado antes de entrar.');
+    expect(traduzirErroAuth({ code: 'over_email_send_rate_limit' }))
+      .toBe('Muitas tentativas seguidas. Espere alguns minutos e tente de novo.');
+    expect(traduzirErroAuth({ code: 'over_request_rate_limit' }))
+      .toBe('Muitas tentativas seguidas. Espere alguns minutos e tente de novo.');
+  });
+
+  it('erro desconhecido (ou sem erro) mostra uma mensagem genérica, que serve para login e cadastro', () => {
+    const generica = 'Não foi possível concluir agora. Tente de novo em instantes.';
+    expect(traduzirErroAuth({ message: 'Something odd' })).toBe(generica);
+    expect(traduzirErroAuth(null)).toBe(generica);
   });
 });
 
@@ -149,6 +182,38 @@ describe('moverColunaNaOrdem', () => {
   it('não altera a lista original', () => {
     moverColunaNaOrdem(colunas, 'b', -1);
     expect(colunas.find((c) => c.id === 'b').posicao).toBe(2);
+  });
+
+  it('id que não existe: só renumera 1..n', () => {
+    const comBuraco = [{ id: 'a', posicao: 1 }, { id: 'b', posicao: 4 }];
+    expect(ordem(moverColunaNaOrdem(comBuraco, 'x', +1))).toBe('a1 b2');
+  });
+
+  it('lista com uma coluna só não muda', () => {
+    expect(ordem(moverColunaNaOrdem([{ id: 'a', posicao: 1 }], 'a', +1))).toBe('a1');
+  });
+});
+
+describe('proximaPosicao', () => {
+  it('board sem colunas: a primeira é a posição 1', () => {
+    expect(proximaPosicao([])).toBe(1);
+  });
+
+  it('coluna nova entra depois da maior posição (mesmo com buracos de colunas arquivadas)', () => {
+    expect(proximaPosicao([{ posicao: 1 }, { posicao: 2 }, { posicao: 5 }])).toBe(6);
+  });
+});
+
+describe('colunasQueMudaram', () => {
+  it('devolve só as colunas cuja posição mudou (as que precisam ser gravadas)', () => {
+    const antes = [{ id: 'a', posicao: 1 }, { id: 'b', posicao: 2 }, { id: 'c', posicao: 3 }];
+    const depois = [{ id: 'b', posicao: 1 }, { id: 'a', posicao: 2 }, { id: 'c', posicao: 3 }];
+    expect(colunasQueMudaram(antes, depois)).toEqual([{ id: 'b', posicao: 1 }, { id: 'a', posicao: 2 }]);
+  });
+
+  it('sem mudança, não devolve nada', () => {
+    const lista = [{ id: 'a', posicao: 1 }];
+    expect(colunasQueMudaram(lista, lista)).toEqual([]);
   });
 });
 

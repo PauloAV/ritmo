@@ -92,7 +92,17 @@ export function traduzirErroAuth(erro) {
   if (codigo === 'user_already_exists' || mensagem.includes('already registered')) {
     return 'Já existe uma conta com este e-mail.';
   }
-  return 'Não foi possível entrar agora. Tente de novo em instantes.';
+  if (codigo === 'weak_password') {
+    return 'A senha é fraca demais. Escolha uma senha mais forte.';
+  }
+  if (codigo === 'email_not_confirmed') {
+    return 'Confirme o seu e-mail pelo link enviado antes de entrar.';
+  }
+  if (codigo === 'over_email_send_rate_limit' || codigo === 'over_request_rate_limit') {
+    return 'Muitas tentativas seguidas. Espere alguns minutos e tente de novo.';
+  }
+  // Genérica: serve tanto para login quanto para cadastro.
+  return 'Não foi possível concluir agora. Tente de novo em instantes.';
 }
 
 // ---------- História 1: board e colunas ----------
@@ -132,4 +142,26 @@ export function podeArquivarColuna(quantidadeCartoes) {
   return quantidadeCartoes > 0
     ? [`A coluna tem ${quantidadeCartoes} cartão(ões). Mova os cartões antes de excluir.`]
     : [];
+}
+
+/**
+ * Posição de uma coluna nova: depois da maior posição que existe (a coluna entra no fim).
+ * Board sem colunas começa na 1. Buracos (de colunas arquivadas) não importam.
+ * @param {{posicao: number}[]} colunas
+ */
+export function proximaPosicao(colunas) {
+  return Math.max(0, ...colunas.map((c) => c.posicao)) + 1;
+}
+
+/**
+ * Compara a ordem antiga com a nova e devolve só as colunas cuja posição mudou,
+ * que são as únicas que precisam ser gravadas no banco.
+ * @param {{id: string, posicao: number}[]} antes
+ * @param {{id: string, posicao: number}[]} depois
+ */
+export function colunasQueMudaram(antes, depois) {
+  return depois.filter((nova) => {
+    const antiga = antes.find((c) => c.id === nova.id);
+    return !antiga || antiga.posicao !== nova.posicao;
+  });
 }
