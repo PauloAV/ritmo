@@ -65,7 +65,9 @@ Regras deste arquivo:
    git push -u origin historia-2-convite
    ```
    A H2 usa a função `entrar_no_board`, que já existe no `schema.sql`. A tela de "Meus boards" já existe, e o convite entra nela.
-3. Na **H3**, conferir se a Action `board.yml` move o cartão e grava o Início. Ainda não rodou de verdade; se falhar, o erro aparece em Actions → "Board".
-4. **Registro de Uso da IA da Sprint 1:** 2 de 3 registros, só com o Paulo. **Falta pelo menos 1 do Kauan.**
-5. Quando o site estiver no ar, trocar "_(link do GitHub Pages)_" no README pelo link real.
-6. Se o `esm.sh` (CDN do supabase-js) continuar lento, trocar pelo jsDelivr, sem dependência nova.
+3. Na **H3**, conferir se a Action `board.yml` move o cartão e grava o Início. A parte que move o cartão ainda não rodou de verdade; se falhar, o erro aparece em Actions → "Board".
+   - **Correção de um erro da IA:** a IA disse que a Action só dispararia depois de estar na `main`. Isso está errado. No evento `create`, o GitHub usa o `board.yml` **da branch criada**. Ela já rodou ao criar a `automacao-board` e foi ignorada corretamente. Ou seja: só funciona em branch `historia-N` criada a partir de uma branch que já tenha o `board.yml`. Na prática, isso vale depois do merge do PR #13.
+4. **Registro de Uso da IA da Sprint 1:** 3 registros, todos do Paulo. **Falta pelo menos 1 do Kauan** (regra: os dois integrantes).
+5. **"X" vermelho na `main`:** é o deploy de 11/11, que falhou porque os Secrets ainda não existiam ("Faltam as variáveis SUPABASE_URL e/ou SUPABASE_ANON_KEY"). Os Secrets já estão criados, e o próximo deploy sai no merge do PR #12.
+6. Quando o site estiver no ar, trocar "_(link do GitHub Pages)_" no README pelo link real.
+7. Se o `esm.sh` (CDN do supabase-js) continuar lento, trocar pelo jsDelivr, sem dependência nova.
