@@ -104,3 +104,45 @@ Regras deste arquivo:
 3. O Kauan faz o registro dele no `docs/registro-ia.md` (revisão com IA).
 4. **Erro da IA achado no teste do navegador depois da revisão:** com a `acao()`, um clique em **Sair** durante um carregamento era ignorado sem aviso. O Sair fica no cabeçalho, fora do `<main>`, e por isso não aparecia apagado. Corrigido: o estado "ocupado" agora fica no `<body>`, e todos os botões aparecem apagados.
 5. **Teste no navegador desta rodada, depois da migração 001:** passaram o clique duplo (1 board e 1 coluna só), a mensagem que some depois de um acerto, o Excluir desativado em Em andamento e Concluído, renomear coluna com papel, arquivar coluna sem papel e sair e entrar mantendo o board. Chamando o banco direto, sem a tela, ele recusou arquivar coluna com papel, excluir board e criar coluna com papel.
+
+---
+
+## 12 e 13/11/2026 · Paulo · Sprint 1 · segunda revisão do PR #12
+
+### O que aconteceu
+1. **O Kauan fez a 2ª revisão do PR #12** (12/11, 23h36). Não achou bug que impeça o merge. Pediu 2 itens para aprovar e sugeriu mais 1:
+   - (PO) atualizar o critério 3 da issue #1, porque as colunas com papel também não podem ser excluídas;
+   - teste da regra 2 para as mensagens de `arquivar_coluna`;
+   - (opcional) mostrar na tela por que o "Excluir" está desativado.
+2. **Correções (commit `cff0395`):**
+   - novo teste lê o `schema.sql` e confere as duas mensagens de `podeArquivarColuna`. A de cartões é comparada com `%` no lugar do número. Foi provado que ele falha quando as mensagens divergem. São 38 testes no total;
+   - as colunas com papel mostram o texto "Início/Fim do fluxo nas métricas: não pode ser excluída.";
+   - Sair: `sair()` só trata o erro, e quem volta para a tela de entrar é o listener `SIGNED_OUT`. Antes, `voltarParaEntrar()` rodava duas vezes.
+   - Os 4 comentários nas linhas foram respondidos.
+3. **13/11:**
+   - critério 3 da issue #1 atualizado: "…(coluna com cartões e as colunas de início e fim das métricas não podem ser excluídas)";
+   - no PR #12, um comentário responde ao resumo da 2ª revisão e pede a aprovação.
+
+### Lição para as próximas migrações
+A migração 001 marcou o `papel` pelo **nome** da coluna. Num board com duas colunas "Em andamento" ativas, o `unique (board_id, papel)` faria a migração falhar. Daqui para frente: filtrar também pela posição padrão ou pegar só a de menor posição.
+
+### Estado ao fim da sessão
+- **PR #12 (H1):** os itens pedidos estão resolvidos e o CI passou. **Falta o Kauan aprovar e mesclar.**
+- **PR #13 (automação):** aberto, sem revisão. Entra depois do #12.
+- **`main`:** ainda só com a estrutura inicial.
+- **H2, H3 e H4:** sem branch. Sobram 4 dias de Sprint (termina em 17/11). O que não ficar pronto volta ao backlog.
+
+### Pendências
+1. **Kauan:**
+   - conferir o `cff0395` e aprovar e mesclar o PR #12;
+   - depois, revisar o PR #13.
+2. **Depois do merge:**
+   - conferir o deploy no Pages;
+   - trocar o link no README;
+   - conferir os critérios no site publicado.
+3. **Kauan:** criar a `historia-2-convite` a partir da `main` atualizada. Na H2, impedir que o usuário escolha o `codigo_convite`.
+4. **H3:** conferir se a Action `board.yml` move o cartão e grava o Início. Conferir também, de verdade, "coluna com cartões não pode ser excluída".
+5. **Registro de Uso da IA da Sprint 1:** continua sem nenhum registro do Kauan, e a regra exige os dois integrantes.
+6. **Sprint 2:**
+   - abrir as issues de testes do banco e de `reordenar_colunas`;
+   - nas migrações, não marcar nada só pelo nome.
