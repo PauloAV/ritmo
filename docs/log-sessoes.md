@@ -146,3 +146,32 @@ A migração 001 marcou o `papel` pelo **nome** da coluna. Num board com duas co
 6. **Sprint 2:**
    - abrir as issues de testes do banco e de `reordenar_colunas`;
    - nas migrações, não marcar nada só pelo nome.
+
+---
+
+## 14 e 15/11/2026 · Kauan · Sprint 1 · merge da H1 e H2
+
+### O que foi feito
+1. **3ª conferência do PR #12 pela DoD** (`/revisar-dod`): os três itens da 2ª revisão estavam resolvidos. Os registros de uso da IA do Kauan ainda não estavam commitados; entraram no `98250c6`. **PR #12 aprovado e mesclado** (`8cfc8d5`) e o deploy no Pages passou. A issue #1 fechou.
+2. **H2 (#2) com TDD**, branch `historia-2-convite`, **PR #14**:
+   - Regras em `js/regras.js`: `normalizarCodigo` (igual ao `upper(trim())` do banco), `validarCodigoConvite` e `nomesDosMembros`. São 46 testes. Um deles confere que a mensagem "Código de convite inválido." é a mesma no `entrar_no_board` (regra 2).
+   - Tela: formulário "Entrar no board" em Meus boards; código de convite e "Membros (n)" na tela do board.
+   - Banco: `grant insert (nome)` em `boards`, para ninguém escolher o próprio código (pendência da revisão da H1). **Migração `002-convite.sql` já rodada no Supabase do time.**
+3. **Teste no navegador (headless, Chrome) com 3 contas fictícias**, no projeto do time. Passou: código visível, entrar por código (minúsculo e com espaços), lista de membros nos dois lados, entrar de novo sem duplicar, código vazio/errado/inexistente sem criar nada, e uma conta de fora chamando o banco direto sem ver nada (nem conseguir se inserir em `membros`). O teste achou **1 erro da IA**, corrigido: o `maxlength="6"` no campo cortava o código colado com espaço.
+
+### Cuidados
+- **O `js/config.js` do Kauan apontava para outro projeto do Supabase.** Nesse projeto, o usuário logado não lia nem `boards`. Foi trocado pelo projeto do time. Para conferir qual projeto está em uso, compare o começo da URL com o `js/config.js` do site publicado. A migração 002 pode ter rodado também nesse outro projeto; ele não é usado pelo time.
+- O teste no navegador usou o `playwright-core` instalado só na pasta temporária da sessão, com o Chrome do computador. O projeto não ganhou dependência nova.
+
+### Dados fictícios criados
+- No Supabase do time: contas `teste<número>a/b/c@teste.com` (Ana, Bia e Caio Teste) e boards "Board Convite Teste".
+- No outro projeto (`config.js` antigo): contas de teste e um board "Debug 2".
+
+Todos podem ser apagados.
+
+### Pendências
+1. **Paulo:** revisar o **PR #14 (H2)**. Depois do merge, conferir os critérios no site publicado.
+2. **PR #13 (automação do board):** ainda sem revisão.
+3. **H3 e H4:** sem branch, e a Sprint 1 termina em 17/11. O que não ficar pronto volta ao backlog.
+4. Trocar "_(link do GitHub Pages)_" no README por https://pauloav.github.io/ritmo/.
+5. A pendência 5 da sessão anterior está resolvida: a Sprint 1 já tem registros de uso da IA dos dois integrantes.
