@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import {
   COLUNAS_PADRAO, situacaoWip, validarMovimento,
+  lerLimiteWip, lerPolitica, formatarDataHora, passagensDeWip,
   validarCredenciais, validarCadastro, traduzirErroAuth, validarNome,
   moverColunaNaOrdem, podeArquivarColuna, proximaPosicao, colunasQueMudaram,
 } from '../js/regras.js';
@@ -84,6 +85,92 @@ describe('validarMovimento', () => {
       .toEqual(['O cartão já está nesta coluna.']);
     expect(validarMovimento({ deColunaId: 'col-backlog', paraColuna: undefined, quantidadeNoDestino: 0 }))
       .toEqual(['A coluna de destino não existe neste board.']);
+  });
+});
+
+// ---------- História 4: limite de WIP com justificativa ----------
+
+describe('lerLimiteWip', () => {
+  it('vazio (ou só espaços) = coluna sem limite', () => {
+    expect(lerLimiteWip('')).toEqual({ limite: null, erros: [] });
+    expect(lerLimiteWip('   ')).toEqual({ limite: null, erros: [] });
+  });
+
+  it('aceita inteiro maior que zero, mesmo com espaços nas pontas', () => {
+    expect(lerLimiteWip('3')).toEqual({ limite: 3, erros: [] });
+    expect(lerLimiteWip(' 1 ')).toEqual({ limite: 1, erros: [] });
+  });
+
+  it('recusa zero, negativo, decimal e texto', () => {
+    for (const errado of ['0', '-1', '2.5', '2,5', 'dois', '3a']) {
+      const { limite, erros } = lerLimiteWip(errado);
+      expect(limite).toBeNull();
+      expect(erros).toEqual(['O limite de WIP precisa ser um número inteiro maior que zero (ou vazio para não ter limite).']);
+    }
+  });
+
+  // Regra 2 do CLAUDE.md: a mesma regra do check da tabela colunas no schema.sql.
+  it('bate com o check do banco: limite_wip is null or limite_wip > 0', () => {
+    const sql = readFileSync(new URL('../supabase/schema.sql', import.meta.url), 'utf8');
+    expect(sql).toMatch(/limite_wip integer check \(limite_wip is null or limite_wip > 0\)/);
+  });
+});
+
+describe('lerPolitica', () => {
+  it('tira os espaços das pontas; vazio vira null (coluna sem política)', () => {
+    expect(lerPolitica('  Só entra com critério de aceite claro  ')).toBe('Só entra com critério de aceite claro');
+    expect(lerPolitica('   ')).toBeNull();
+    expect(lerPolitica('')).toBeNull();
+  });
+});
+
+describe('formatarDataHora', () => {
+  // Guardado em UTC; São Paulo é UTC-3 (sem horário de verão desde 2019). Conta feita à mão:
+  it('converte de UTC para o horário de São Paulo', () => {
+    expect(formatarDataHora('2026-11-15T17:30:00Z')).toBe('15/11/2026 14:30');
+  });
+
+  it('volta um dia quando em UTC já passou da meia-noite', () => {
+    expect(formatarDataHora('2026-11-16T02:05:00Z')).toBe('15/11/2026 23:05');
+  });
+});
+
+describe('passagensDeWip', () => {
+  // Dados fictícios no formato que a tela busca: movimentos com o título do cartão junto.
+  const colunas = [
+    { id: 'col-backlog', nome: 'Backlog' },
+    { id: 'col-andamento', nome: 'Em andamento' },
+    { id: 'col-velha', nome: 'Coluna arquivada' },
+  ];
+  const perfis = [{ id: 'u-ana', nome: 'Ana Teste' }, { id: 'u-bia', nome: 'Bia Teste' }];
+  const movimentos = [
+    { id: 1, de_coluna_id: null, para_coluna_id: 'col-backlog', movido_por: 'u-ana',
+      movido_em: '2026-11-10T12:00:00Z', justificativa: null, cartoes: { titulo: 'Cartão A' } },
+    { id: 2, de_coluna_id: 'col-backlog', para_coluna_id: 'col-andamento', movido_por: 'u-bia',
+      movido_em: '2026-11-11T13:00:00Z', justificativa: 'Correção urgente', cartoes: { titulo: 'Cartão A' } },
+    { id: 3, de_coluna_id: 'col-velha', para_coluna_id: 'col-andamento', movido_por: 'u-ana',
+      movido_em: '2026-11-12T14:00:00Z', justificativa: 'Pedido do PO', cartoes: { titulo: 'Cartão B' } },
+  ];
+
+  it('lista só os movimentos com justificativa, do mais recente para o mais antigo, com os nomes', () => {
+    expect(passagensDeWip(movimentos, colunas, perfis)).toEqual([
+      { id: 3, quando: '12/11/2026 11:00', cartao: 'Cartão B', de: 'Coluna arquivada', para: 'Em andamento',
+        quem: 'Ana Teste', justificativa: 'Pedido do PO' },
+      { id: 2, quando: '11/11/2026 10:00', cartao: 'Cartão A', de: 'Backlog', para: 'Em andamento',
+        quem: 'Bia Teste', justificativa: 'Correção urgente' },
+    ]);
+  });
+
+  it('não muda a lista original e devolve vazio quando ninguém passou do limite', () => {
+    const copia = structuredClone(movimentos);
+    passagensDeWip(movimentos, colunas, perfis);
+    expect(movimentos).toEqual(copia);
+    expect(passagensDeWip([movimentos[0]], colunas, perfis)).toEqual([]);
+  });
+
+  it('usa um texto padrão quando falta o nome da coluna ou da pessoa', () => {
+    const [passagem] = passagensDeWip([{ ...movimentos[1], movido_por: 'u-sumiu', para_coluna_id: 'col-x' }], colunas, perfis);
+    expect(passagem).toMatchObject({ para: 'Coluna desconhecida', quem: 'Membro sem nome' });
   });
 });
 
