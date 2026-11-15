@@ -8,13 +8,61 @@
 </head>
 <body>
   <header>
-    <h1>Ritmo</h1>
-    <p>Board Kanban que mede sozinho e prevê o futuro.</p>
+    <div>
+      <h1>Ritmo</h1>
+      <p>Board Kanban que mede sozinho e prevê o futuro.</p>
+    </div>
+    <button id="sair" type="button" hidden>Sair</button>
   </header>
 
   <main>
-    <p id="status">Carregando…</p>
-    <div id="quadro" class="quadro"></div>
+    <!-- Mensagens de erro e avisos. aria-live faz o leitor de tela anunciar. -->
+    <p id="status" role="status" aria-live="polite"></p>
+
+    <!-- Tela 1: entrar ou criar conta -->
+    <section id="tela-entrar" class="tela" hidden>
+      <h2 id="titulo-entrar">Entrar</h2>
+      <form id="form-entrar" class="formulario" novalidate>
+        <label id="campo-nome" hidden>Seu nome
+          <input id="nome" type="text" autocomplete="name">
+        </label>
+        <label>E-mail
+          <input id="email" type="email" autocomplete="email" required>
+        </label>
+        <label>Senha
+          <input id="senha" type="password" autocomplete="current-password" required>
+        </label>
+        <button id="botao-entrar" type="submit">Entrar</button>
+      </form>
+      <button id="trocar-modo" type="button" class="link">Criar uma conta</button>
+    </section>
+
+    <!-- Tela 2: meus boards -->
+    <section id="tela-boards" class="tela" hidden>
+      <h2>Meus boards</h2>
+      <ul id="lista-boards" class="lista-boards"></ul>
+      <form id="form-board" class="formulario em-linha" novalidate>
+        <label>Nome do novo board
+          <input id="nome-board-novo" type="text">
+        </label>
+        <button type="submit">Criar board</button>
+      </form>
+    </section>
+
+    <!-- Tela 3: o board com as colunas -->
+    <section id="tela-board" class="tela" hidden>
+      <div class="topo-board">
+        <button id="voltar" type="button">← Meus boards</button>
+        <h2 id="nome-board"></h2>
+      </div>
+      <div id="quadro" class="quadro"></div>
+      <form id="form-coluna" class="formulario em-linha" novalidate>
+        <label>Nova coluna
+          <input id="nome-coluna-nova" type="text">
+        </label>
+        <button type="submit">Adicionar coluna</button>
+      </form>
+    </section>
   </main>
 
   <script type="module" src="js/app.js"></script>

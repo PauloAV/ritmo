@@ -42,7 +42,7 @@ CLAUDE.md, .claude/skills/  instruções e skills do time para o Claude Code
 
 ## Configuração (uma vez só)
 
-1. **Supabase**: crie um projeto no plano gratuito. Em *SQL Editor*, rode o conteúdo de `supabase/schema.sql`.
+1. **Supabase**: crie um projeto no plano gratuito. Em *SQL Editor*, rode o conteúdo de `supabase/schema.sql`. Um banco que já existia recebe as mudanças pelos arquivos de `supabase/migracoes/`, em ordem e uma vez cada.
 2. Em *Authentication > Sign In / Providers > Email*, desative **Confirm email**, para os testes funcionarem com e-mails fictícios (ex.: `ana@teste.com`).
 3. **GitHub > Settings > Secrets and variables > Actions**: crie os secrets `SUPABASE_URL` e `SUPABASE_ANON_KEY` (valores em *Supabase > Project Settings > API*).
 4. **GitHub > Settings > Pages**: em *Source*, escolha **GitHub Actions**.
