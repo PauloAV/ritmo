@@ -146,3 +146,30 @@ A migração 001 marcou o `papel` pelo **nome** da coluna. Num board com duas co
 6. **Sprint 2:**
    - abrir as issues de testes do banco e de `reordenar_colunas`;
    - nas migrações, não marcar nada só pelo nome.
+
+---
+
+## 15/11/2026 · Kauan · Sprint 1 · H4
+
+### O que foi feito
+1. **H4 (#4) com TDD**, branch `historia-4-wip` criada a partir da `main` e enviada na hora (para a Action do board gravar o Início):
+   - Regras em `js/regras.js`, logo depois do `validarMovimento`: `lerLimiteWip` (vazio = sem limite; só inteiro > 0, igual ao `check` do banco), `lerPolitica`, `formatarDataHora` (UTC → São Paulo) e `passagensDeWip`. São 48 testes.
+   - Tela: botão "WIP e política" em cada coluna; política abaixo do título; "n/limite" amarelo quando a coluna enche e vermelho quando passa; seção "Passagens do limite de WIP (para o Scrum Master)" no fim do board.
+   - **Banco sem mudança, sem migração.** `limite_wip`, `politica`, `movimentos.justificativa` e a conferência na `mover_cartao` já existiam.
+2. **Teste no navegador (headless, Chrome, tela de celular)**, no projeto do time: 21/21. Como a tela de mover é da H3, os movimentos foram feitos chamando `mover_cartao` direto: o 3º cartão em "Em andamento" (WIP 2) foi recusado sem justificativa e com justificativa só de espaços, e passou com justificativa. O update direto em `movimentos` foi recusado.
+
+### Decisões
+- **Critério 2 da H4:** a função `pedirJustificativaSePreciso` (em `js/app.js`) está pronta, mas ainda não é chamada. **Depois do merge da H3**, atualizar a branch da H4 com a `main` e chamar a função no mover da H3, antes da `rpc('mover_cartao')`, passando o `justificativa` dela em `p_justificativa`. Se `pode` vier `false`, não mover.
+- A seção do SM aparece para todo o time, porque o banco não tem papel de Scrum Master; o título diz para quem ela é.
+
+### Cuidados
+- A H4 saiu da `main`, sem a H2. Ao mesclar os dois PRs, esperar conflito simples em `js/app.js` (import e `abrirBoard`, que nas duas histórias chama mais de uma função de desenho), no `index.html` e no fim de `docs/registro-ia.md` e deste log. Manter as duas partes.
+- `mover_cartao` trava só o cartão: dois movimentos ao mesmo tempo para a mesma coluna ainda podem passar do WIP sem justificativa (já anotado na sessão de 11/11).
+
+### Dados fictícios criados
+- No Supabase do time: contas `teste<número>w@teste.com` (Ana Teste), boards "Board WIP Teste" e cartões "Cartão A/B/C". Podem ser apagados (os movimentos não saem pela tela, por regra).
+
+### Pendências
+1. **Paulo:** revisar o PR da H4. Ele só fica completo depois da H3 (critério 2).
+2. **Kauan:** depois do merge da H3, ligar `pedirJustificativaSePreciso` ao mover e repetir o teste no navegador pela tela.
+3. Sprint 1 termina em 17/11: o que não ficar pronto volta ao backlog.
