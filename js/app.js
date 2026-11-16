@@ -240,6 +240,7 @@ async function abrirBoard(board) {
   $('#nome-board').textContent = board.nome;
   $('#codigo-board').textContent = board.codigo_convite;
   $('#lista-membros').replaceChildren(); // apaga os membros do board anterior
+  $('#titulo-membros').textContent = 'Membros'; // e a contagem antiga também (revisão do Paulo)
   await Promise.all([desenharColunas(), desenharMembros()]);
 }
 

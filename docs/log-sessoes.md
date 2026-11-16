@@ -171,7 +171,7 @@ Todos podem ser apagados.
 
 ### Pendências
 1. **Paulo:** revisar o **PR #14 (H2)**. Depois do merge, conferir os critérios no site publicado.
-2. **PR #13 (automação do board):** ainda sem revisão.
+2. **PR #13 (automação do board):** ✅ mesclado (`3fcb976`).
 3. **H3 e H4:** sem branch, e a Sprint 1 termina em 17/11. O que não ficar pronto volta ao backlog.
 4. Trocar "_(link do GitHub Pages)_" no README por https://pauloav.github.io/ritmo/.
 5. A pendência 5 da sessão anterior está resolvida: a Sprint 1 já tem registros de uso da IA dos dois integrantes.
