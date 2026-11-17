@@ -4,6 +4,7 @@ import {
   COLUNAS_PADRAO, situacaoWip, validarMovimento,
   validarCredenciais, validarCadastro, traduzirErroAuth, validarNome,
   moverColunaNaOrdem, podeArquivarColuna, proximaPosicao, colunasQueMudaram,
+  normalizarCodigo, validarCodigoConvite, nomesDosMembros,
   validarCartao, colunaVizinha, formatarDataHora, montarHistorico, movimentoParaDesfazer,
 } from '../js/regras.js';
 
@@ -256,6 +257,66 @@ describe('podeArquivarColuna', () => {
     // No banco, o número vem por %: 'A coluna tem % cartão(ões). Mova os cartões antes de excluir.'
     const comCartoes = podeArquivarColuna({ quantidadeCartoes: 7, papel: null })[0];
     expect(sql).toContain(comCartoes.replace('7', '%'));
+  });
+});
+
+// ---------- História 2: convite por código ----------
+
+describe('normalizarCodigo', () => {
+  // Mesmo tratamento do entrar_no_board no banco: upper(trim(p_codigo)).
+  it('tira os espaços das pontas e põe em maiúsculas', () => {
+    expect(normalizarCodigo('  ab12cd ')).toBe('AB12CD');
+  });
+
+  it('trata campo vazio ou ausente como texto vazio', () => {
+    expect(normalizarCodigo('   ')).toBe('');
+    expect(normalizarCodigo(undefined)).toBe('');
+  });
+});
+
+describe('validarCodigoConvite', () => {
+  it('aceita 6 letras ou números, mesmo digitados com espaço e minúsculas', () => {
+    expect(validarCodigoConvite('AB12CD')).toEqual([]);
+    expect(validarCodigoConvite(' ab12cd ')).toEqual([]);
+  });
+
+  it('pede o código quando o campo está vazio', () => {
+    expect(validarCodigoConvite('  ')).toEqual(['Digite o código de convite.']);
+  });
+
+  it('recusa código com tamanho errado ou com símbolo, sem precisar ir ao banco', () => {
+    expect(validarCodigoConvite('AB12C')).toEqual(['Código de convite inválido.']);
+    expect(validarCodigoConvite('AB12CDE')).toEqual(['Código de convite inválido.']);
+    expect(validarCodigoConvite('AB-12C')).toEqual(['Código de convite inválido.']);
+  });
+
+  // Regra 2: o banco (entrar_no_board) dá a mesma mensagem para código que não existe.
+  it('usa a mesma mensagem de código inválido que o entrar_no_board do schema.sql', () => {
+    const sql = readFileSync(new URL('../supabase/schema.sql', import.meta.url), 'utf8');
+    expect(sql).toContain(`'${validarCodigoConvite('X')[0]}'`);
+  });
+});
+
+describe('nomesDosMembros', () => {
+  // Pessoas fictícias. As datas estão em UTC, como o banco guarda (entrou_em é timestamptz).
+  const perfis = [
+    { id: 'u-bia', nome: 'Bia Teste' },
+    { id: 'u-ana', nome: 'Ana Teste' },
+    { id: 'u-caio', nome: 'Caio Teste' },
+  ];
+
+  it('devolve os nomes na ordem em que cada um entrou no board', () => {
+    const membros = [
+      { usuario_id: 'u-bia', entrou_em: '2026-11-14T15:00:00+00:00' },
+      { usuario_id: 'u-ana', entrou_em: '2026-11-10T09:30:00+00:00' },
+      { usuario_id: 'u-caio', entrou_em: '2026-11-14T15:05:00+00:00' },
+    ];
+    expect(nomesDosMembros(membros, perfis)).toEqual(['Ana Teste', 'Bia Teste', 'Caio Teste']);
+  });
+
+  it('mostra "Membro sem nome" quando não acha o perfil, em vez de sumir com a pessoa', () => {
+    const membros = [{ usuario_id: 'u-sem-perfil', entrou_em: '2026-11-14T15:00:00+00:00' }];
+    expect(nomesDosMembros(membros, perfis)).toEqual(['Membro sem nome']);
   });
 });
 

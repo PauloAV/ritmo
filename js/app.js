@@ -1,4 +1,5 @@
 // Telas do Ritmo. História 1: entrar/cadastrar, meus boards e o board com as colunas.
+// História 2: código de convite, entrar no board por código e lista de membros.
 // História 3: cartões, mover entre colunas (botões ← →), desfazer e histórico de movimentos.
 // Segurança: texto digitado pelo usuário entra na página só por textContent (nunca innerHTML),
 // para ninguém conseguir injetar HTML ou script pelo nome de um board ou coluna.
@@ -6,8 +7,12 @@ import { supabase } from './supabase.js';
 import {
   situacaoWip, validarCredenciais, validarCadastro, traduzirErroAuth,
   validarNome, moverColunaNaOrdem, podeArquivarColuna, proximaPosicao, colunasQueMudaram,
+  normalizarCodigo, validarCodigoConvite, nomesDosMembros,
   validarCartao, colunaVizinha, montarHistorico, movimentoParaDesfazer,
 } from './regras.js';
+
+// Campos do board que as telas usam (o código de convite aparece no board, história 2).
+const CAMPOS_BOARD = 'id, nome, codigo_convite';
 
 const $ = (seletor) => document.querySelector(seletor);
 
@@ -148,7 +153,7 @@ async function abrirMeusBoards() {
   $('#lista-boards').replaceChildren(); // apaga a lista antiga enquanto a nova não chega
 
   // O RLS ("ver meus boards") faz o banco devolver só os boards de que a pessoa é membro.
-  const { data: boards, error } = await supabase.from('boards').select('id, nome').order('criado_em');
+  const { data: boards, error } = await supabase.from('boards').select(CAMPOS_BOARD).order('criado_em');
   if (error) {
     mostrarMensagem('Não foi possível carregar os boards.');
     return;
@@ -183,12 +188,46 @@ async function criarBoard() {
 
   // O gatilho preparar_board cria as 5 colunas padrão e coloca quem criou como membro.
   const { data: board, error } = await supabase
-    .from('boards').insert({ nome: nome.trim() }).select('id, nome').single();
+    .from('boards').insert({ nome: nome.trim() }).select(CAMPOS_BOARD).single();
   if (error) {
     mostrarMensagem('Não foi possível criar o board.');
     return;
   }
   $('#form-board').reset();
+  await abrirBoard(board);
+}
+
+$('#form-convite').addEventListener('submit', (evento) => {
+  evento.preventDefault();
+  acao(entrarComCodigo);
+});
+
+async function entrarComCodigo() {
+  const digitado = $('#codigo-convite').value;
+  const erros = validarCodigoConvite(digitado);
+  if (erros.length > 0) {
+    mostrarMensagem(erros.join(' '));
+    return;
+  }
+
+  // entrar_no_board (schema.sql) procura o board pelo código e coloca a pessoa como membro.
+  // Se ela já era membro, nada muda e o board só abre. Código que não existe: o banco recusa.
+  const { data: idBoard, error } = await supabase.rpc('entrar_no_board', { p_codigo: normalizarCodigo(digitado) });
+  if (error) {
+    // A frase do banco para código errado é a mesma de validarCodigoConvite (teste da regra 2).
+    const codigoErrado = error.message === 'Código de convite inválido.';
+    mostrarMensagem(codigoErrado ? error.message : 'Não foi possível entrar no board.');
+    return;
+  }
+
+  // Agora que é membro, o RLS deixa ler o board.
+  const { data: board, error: erroBoard } = await supabase
+    .from('boards').select(CAMPOS_BOARD).eq('id', idBoard).single();
+  if (erroBoard) {
+    mostrarMensagem('Você entrou no board, mas não foi possível abri-lo. Volte a Meus boards.');
+    return;
+  }
+  $('#form-convite').reset();
   await abrirBoard(board);
 }
 
@@ -201,7 +240,24 @@ async function abrirBoard(board) {
   boardAtual = board;
   mostrarTela('tela-board');
   $('#nome-board').textContent = board.nome;
-  await desenharColunas();
+  $('#codigo-board').textContent = board.codigo_convite;
+  $('#lista-membros').replaceChildren(); // apaga os membros do board anterior
+  $('#titulo-membros').textContent = 'Membros'; // e a contagem antiga também (revisão do Paulo)
+  await desenharColunas(); // desenha também a lista de membros (desenharMembros)
+}
+
+/**
+ * Lista quem é membro do board (história 2), na ordem em que cada um entrou.
+ * Os dados vêm de desenharColunas, que já busca membros e perfis para os cartões (história 3).
+ */
+function desenharMembros(membros, perfis) {
+  const nomes = nomesDosMembros(membros, perfis);
+  $('#titulo-membros').textContent = `Membros (${nomes.length}):`;
+  $('#lista-membros').replaceChildren(...nomes.map((nome) => {
+    const item = document.createElement('li');
+    item.textContent = nome; // textContent: nome digitado pelo usuário nunca vira HTML
+    return item;
+  }));
 }
 
 $('#voltar').addEventListener('click', () => acao(abrirMeusBoards));
@@ -218,13 +274,14 @@ async function desenharColunas() {
       .eq('board_id', boardAtual.id).order('posicao'),
     supabase.from('cartoes').select('id, coluna_id, titulo, pontos, responsavel_id')
       .eq('board_id', boardAtual.id).order('criado_em'),
-    supabase.from('membros').select('usuario_id').eq('board_id', boardAtual.id),
+    supabase.from('membros').select('usuario_id, entrou_em').eq('board_id', boardAtual.id),
   ]);
   if (colunas.error || cartoes.error || membros.error) {
     mostrarMensagem('Não foi possível carregar o board.');
     return;
   }
   // Movimentos e perfis dependem dos ids que acabaram de chegar, por isso vêm numa segunda busca.
+  // (membros e perfis ligam em auth.users, não uma na outra, por isso não dá para buscar juntos.)
   const [movimentos, perfis] = await Promise.all([
     supabase.from('movimentos')
       .select('id, cartao_id, de_coluna_id, para_coluna_id, movido_por, movido_em')
@@ -237,6 +294,7 @@ async function desenharColunas() {
   }
 
   colunasAtuais = colunas.data.filter((c) => !c.arquivada);
+  desenharMembros(membros.data, perfis.data);
   preencherResponsaveis(perfis.data);
   const cartoesNa = (idColuna) => cartoes.data.filter((c) => c.coluna_id === idColuna);
   const quantidadeNa = (idColuna) => cartoesNa(idColuna).length;

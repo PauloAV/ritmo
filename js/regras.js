@@ -178,6 +178,42 @@ export function colunasQueMudaram(antes, depois) {
   });
 }
 
+// ---------- História 2: convite por código ----------
+
+/**
+ * Deixa o código digitado igual ao guardado no banco: sem espaços nas pontas e em maiúsculas.
+ * Mesmo tratamento do entrar_no_board no schema.sql: upper(trim(p_codigo)).
+ * @param {string} texto
+ */
+export function normalizarCodigo(texto) {
+  return (texto ?? '').trim().toUpperCase();
+}
+
+/**
+ * Confere o código antes de chamar o banco. O banco gera 6 caracteres (codigo_convite no schema.sql);
+ * código fora desse formato nem existe, então já sai a mesma mensagem que o entrar_no_board daria.
+ * @param {string} texto
+ */
+export function validarCodigoConvite(texto) {
+  const codigo = normalizarCodigo(texto);
+  if (codigo === '') return ['Digite o código de convite.'];
+  if (!/^[A-Z0-9]{6}$/.test(codigo)) return ['Código de convite inválido.'];
+  return [];
+}
+
+/**
+ * Lista de membros do board: junta as linhas de membros com os nomes em perfis
+ * (as duas tabelas ligam em auth.users, por isso a tela faz duas buscas) e ordena por quem entrou primeiro.
+ * Devolve uma lista nova; as originais não mudam.
+ * @param {{usuario_id: string, entrou_em: string}[]} membros
+ * @param {{id: string, nome: string}[]} perfis
+ */
+export function nomesDosMembros(membros, perfis) {
+  return [...membros]
+    .sort((x, y) => new Date(x.entrou_em) - new Date(y.entrou_em))
+    .map((m) => perfis.find((p) => p.id === m.usuario_id)?.nome ?? 'Membro sem nome');
+}
+
 // ---------- História 3: cartões com histórico de movimentos ----------
 
 /**

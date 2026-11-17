@@ -47,6 +47,15 @@
         </label>
         <button type="submit">Criar board</button>
       </form>
+      <!-- História 2: entrar no board de um colega pelo código de convite -->
+      <form id="form-convite" class="formulario em-linha" novalidate>
+        <label>Código de convite
+          <!-- Sem maxlength: quem cola o código com espaço junto (" ab12cd ") perderia o fim.
+               O tamanho é conferido por validarCodigoConvite (regras.js). -->
+          <input id="codigo-convite" type="text" autocomplete="off" autocapitalize="characters" spellcheck="false">
+        </label>
+        <button type="submit">Entrar no board</button>
+      </form>
     </section>
 
     <!-- Tela 3: o board com as colunas -->
@@ -54,6 +63,12 @@
       <div class="topo-board">
         <button id="voltar" type="button">← Meus boards</button>
         <h2 id="nome-board"></h2>
+      </div>
+      <!-- História 2: código para convidar o time e quem já está no board -->
+      <div class="time-board">
+        <p>Código de convite: <strong id="codigo-board" class="codigo"></strong></p>
+        <p id="titulo-membros">Membros</p>
+        <ul id="lista-membros" class="lista-membros" aria-labelledby="titulo-membros"></ul>
       </div>
       <!-- História 3: o cartão novo entra na primeira coluna do board -->
       <form id="form-cartao" class="formulario em-linha" novalidate>
