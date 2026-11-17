@@ -127,6 +127,17 @@ language sql stable security definer set search_path = public as $$
   );
 $$;
 
+-- "Esta pessoa pode ser responsável por um cartão deste board?" (história 3)
+-- Pode ficar sem responsável (null); se tiver, precisa ser membro do board.
+-- security definer pelo mesmo motivo de eh_membro (consultar membros dentro de uma regra).
+create function public.pode_ser_responsavel(p_board uuid, p_usuario uuid) returns boolean
+language sql stable security definer set search_path = public as $$
+  select p_usuario is null or exists (
+    select 1 from public.membros
+    where board_id = p_board and usuario_id = p_usuario
+  );
+$$;
+
 -- Entrar em um board pelo código de convite (história 2).
 -- No app: supabase.rpc('entrar_no_board', { p_codigo: 'AB12CD' })
 create function public.entrar_no_board(p_codigo text) returns uuid
@@ -222,6 +233,10 @@ end $$;
 -- e ninguém edita ou apaga movimentos.
 revoke update on public.cartoes from anon, authenticated;
 grant update (titulo, pontos, responsavel_id) on public.cartoes to authenticated;
+-- Cartão novo (história 3): só estes campos. criado_em e criado_por vêm dos defaults, porque o
+-- primeiro movimento copia criado_em (início do Lead Time); ninguém escolhe uma data falsa.
+revoke insert on public.cartoes from anon, authenticated;
+grant insert (board_id, coluna_id, titulo, pontos, responsavel_id) on public.cartoes to authenticated;
 revoke insert, update, delete on public.movimentos from anon, authenticated;
 
 -- Board: membros só mudam o nome. Sem isso, um membro poderia trocar criado_por,
@@ -290,11 +305,13 @@ using (public.eh_membro(board_id));
 create policy "criar cartao" on public.cartoes for insert to authenticated
 with check (
   public.eh_membro(board_id) and criado_por = auth.uid()
+  and public.pode_ser_responsavel(board_id, responsavel_id)  -- responsável é do time (ou ninguém)
   and exists (select 1 from public.colunas k                 -- não cria cartão em coluna arquivada
               where k.id = coluna_id and not k.arquivada)
 );
 create policy "editar cartao" on public.cartoes for update to authenticated
-using (public.eh_membro(board_id)) with check (public.eh_membro(board_id));
+using (public.eh_membro(board_id))
+with check (public.eh_membro(board_id) and public.pode_ser_responsavel(board_id, responsavel_id));
 
 -- Movimentos: só leitura para os membros do board.
 create policy "ver historico do time" on public.movimentos for select to authenticated

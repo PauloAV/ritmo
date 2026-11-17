@@ -1,5 +1,6 @@
 // Telas do Ritmo. História 1: entrar/cadastrar, meus boards e o board com as colunas.
 // História 2: código de convite, entrar no board por código e lista de membros.
+// História 3: cartões, mover entre colunas (botões ← →), desfazer e histórico de movimentos.
 // Segurança: texto digitado pelo usuário entra na página só por textContent (nunca innerHTML),
 // para ninguém conseguir injetar HTML ou script pelo nome de um board ou coluna.
 import { supabase } from './supabase.js';
@@ -7,6 +8,7 @@ import {
   situacaoWip, validarCredenciais, validarCadastro, traduzirErroAuth,
   validarNome, moverColunaNaOrdem, podeArquivarColuna, proximaPosicao, colunasQueMudaram,
   normalizarCodigo, validarCodigoConvite, nomesDosMembros,
+  validarCartao, colunaVizinha, montarHistorico, movimentoParaDesfazer,
 } from './regras.js';
 
 // Campos do board que as telas usam (o código de convite aparece no board, história 2).
@@ -232,7 +234,7 @@ async function entrarComCodigo() {
 // ---------- Tela 3: o board com as colunas ----------
 
 let boardAtual = null;
-let colunasAtuais = [];
+let colunasAtuais = []; // só as ativas (sem as arquivadas), na ordem do board
 
 async function abrirBoard(board) {
   boardAtual = board;
@@ -241,25 +243,14 @@ async function abrirBoard(board) {
   $('#codigo-board').textContent = board.codigo_convite;
   $('#lista-membros').replaceChildren(); // apaga os membros do board anterior
   $('#titulo-membros').textContent = 'Membros'; // e a contagem antiga também (revisão do Paulo)
-  await Promise.all([desenharColunas(), desenharMembros()]);
+  await desenharColunas(); // desenha também a lista de membros (desenharMembros)
 }
 
-/** Lista quem é membro do board (história 2). O RLS só devolve membros e nomes do próprio time. */
-async function desenharMembros() {
-  const { data: membros, error } = await supabase
-    .from('membros').select('usuario_id, entrou_em').eq('board_id', boardAtual.id);
-  if (error) {
-    mostrarMensagem('Não foi possível carregar os membros.');
-    return;
-  }
-  // membros e perfis ligam em auth.users (não uma na outra), por isso são duas buscas.
-  const { data: perfis, error: erroPerfis } = await supabase
-    .from('perfis').select('id, nome').in('id', membros.map((m) => m.usuario_id));
-  if (erroPerfis) {
-    mostrarMensagem('Não foi possível carregar os membros.');
-    return;
-  }
-
+/**
+ * Lista quem é membro do board (história 2), na ordem em que cada um entrou.
+ * Os dados vêm de desenharColunas, que já busca membros e perfis para os cartões (história 3).
+ */
+function desenharMembros(membros, perfis) {
   const nomes = nomesDosMembros(membros, perfis);
   $('#titulo-membros').textContent = `Membros (${nomes.length}):`;
   $('#lista-membros').replaceChildren(...nomes.map((nome) => {
@@ -271,19 +262,42 @@ async function desenharMembros() {
 
 $('#voltar').addEventListener('click', () => acao(abrirMeusBoards));
 
-/** Busca as colunas (sem as arquivadas) e quantos cartões há em cada uma, e desenha o quadro. */
+/**
+ * Busca tudo o que o board mostra e desenha o quadro: colunas, cartões, o histórico de cada cartão
+ * e os membros (para o nome do responsável, de quem moveu e a lista do formulário de cartão novo).
+ * O RLS só devolve dados de boards de que a pessoa é membro.
+ */
 async function desenharColunas() {
-  const [colunas, cartoes] = await Promise.all([
-    supabase.from('colunas').select('id, nome, posicao, limite_wip, papel')
-      .eq('board_id', boardAtual.id).eq('arquivada', false).order('posicao'),
-    supabase.from('cartoes').select('coluna_id').eq('board_id', boardAtual.id),
+  const [colunas, cartoes, membros] = await Promise.all([
+    // Todas as colunas, inclusive as arquivadas: o histórico mostra o nome delas.
+    supabase.from('colunas').select('id, nome, posicao, limite_wip, papel, arquivada')
+      .eq('board_id', boardAtual.id).order('posicao'),
+    supabase.from('cartoes').select('id, coluna_id, titulo, pontos, responsavel_id')
+      .eq('board_id', boardAtual.id).order('criado_em'),
+    supabase.from('membros').select('usuario_id, entrou_em').eq('board_id', boardAtual.id),
   ]);
-  if (colunas.error || cartoes.error) {
+  if (colunas.error || cartoes.error || membros.error) {
     mostrarMensagem('Não foi possível carregar o board.');
     return;
   }
-  colunasAtuais = colunas.data;
-  const quantidadeNa = (idColuna) => cartoes.data.filter((c) => c.coluna_id === idColuna).length;
+  // Movimentos e perfis dependem dos ids que acabaram de chegar, por isso vêm numa segunda busca.
+  // (membros e perfis ligam em auth.users, não uma na outra, por isso não dá para buscar juntos.)
+  const [movimentos, perfis] = await Promise.all([
+    supabase.from('movimentos')
+      .select('id, cartao_id, de_coluna_id, para_coluna_id, movido_por, movido_em')
+      .in('cartao_id', cartoes.data.map((c) => c.id)),
+    supabase.from('perfis').select('id, nome').in('id', membros.data.map((m) => m.usuario_id)),
+  ]);
+  if (movimentos.error || perfis.error) {
+    mostrarMensagem('Não foi possível carregar o board.');
+    return;
+  }
+
+  colunasAtuais = colunas.data.filter((c) => !c.arquivada);
+  desenharMembros(membros.data, perfis.data);
+  preencherResponsaveis(perfis.data);
+  const cartoesNa = (idColuna) => cartoes.data.filter((c) => c.coluna_id === idColuna);
+  const quantidadeNa = (idColuna) => cartoesNa(idColuna).length;
 
   const quadro = $('#quadro');
   quadro.replaceChildren();
@@ -327,8 +341,144 @@ async function desenharColunas() {
         : 'Fim do fluxo nas métricas: não pode ser excluída.';
       secao.append(aviso);
     }
+
+    // Cartões da coluna (história 3).
+    const lista = document.createElement('ol');
+    lista.className = 'cartoes';
+    lista.setAttribute('aria-label', `Cartões em ${coluna.nome}`);
+    for (const cartao of cartoesNa(coluna.id)) {
+      const doCartao = movimentos.data.filter((m) => m.cartao_id === cartao.id);
+      lista.append(desenharCartao(cartao, doCartao, colunas.data, perfis.data));
+    }
+    secao.append(lista);
     quadro.append(secao);
   });
+}
+
+/**
+ * Um cartão: título, pontos e responsável; botões ← → (mover) e Desfazer; e o histórico.
+ * Todo texto do usuário entra por textContent.
+ */
+function desenharCartao(cartao, movimentos, todasAsColunas, perfis) {
+  const item = document.createElement('li');
+  item.className = 'cartao';
+
+  const titulo = document.createElement('p');
+  titulo.className = 'titulo-cartao';
+  titulo.textContent = cartao.titulo;
+  item.append(titulo);
+
+  const detalhes = [];
+  if (cartao.pontos !== null) detalhes.push(`${cartao.pontos} pt`);
+  if (cartao.responsavel_id) {
+    detalhes.push(perfis.find((p) => p.id === cartao.responsavel_id)?.nome ?? 'Membro sem nome');
+  }
+  if (detalhes.length > 0) {
+    const info = document.createElement('p');
+    info.className = 'info-cartao';
+    info.textContent = detalhes.join(' · ');
+    item.append(info);
+  }
+
+  // Botões em vez de arrastar: funcionam no celular e no teclado.
+  const esquerda = colunaVizinha(colunasAtuais, cartao.coluna_id, -1);
+  const direita = colunaVizinha(colunasAtuais, cartao.coluna_id, +1);
+  const voltarPara = movimentoParaDesfazer(movimentos);
+  const nomeDa = (id) => todasAsColunas.find((c) => c.id === id)?.nome;
+  const acoes = document.createElement('div');
+  acoes.className = 'acoes';
+  acoes.append(
+    criarBotao('←', esquerda ? `Mover "${cartao.titulo}" para ${nomeDa(esquerda)}` : 'Não há coluna à esquerda',
+      () => acao(() => moverCartao(cartao.id, esquerda)), !esquerda),
+    criarBotao('→', direita ? `Mover "${cartao.titulo}" para ${nomeDa(direita)}` : 'Não há coluna à direita',
+      () => acao(() => moverCartao(cartao.id, direita)), !direita),
+    // Desfazer = movimento NOVO de volta para a coluna de origem; nada é apagado do histórico.
+    criarBotao('Desfazer',
+      voltarPara ? `Desfazer o último movimento de "${cartao.titulo}" (volta para ${nomeDa(voltarPara)})`
+        : 'O cartão acabou de ser criado: não há movimento para desfazer',
+      () => acao(() => moverCartao(cartao.id, voltarPara)), !voltarPara),
+  );
+  item.append(acoes);
+
+  // Histórico só para ler: não há botão de editar nem de apagar (e o banco também não deixa).
+  const historico = montarHistorico(movimentos, todasAsColunas, perfis);
+  const caixa = document.createElement('details');
+  const resumo = document.createElement('summary');
+  resumo.textContent = `Histórico (${historico.length})`;
+  const linhas = document.createElement('ol');
+  linhas.className = 'historico';
+  for (const h of historico) {
+    const linha = document.createElement('li');
+    linha.textContent = `${h.quando} · ${h.texto} · ${h.quem}`;
+    linhas.append(linha);
+  }
+  caixa.append(resumo, linhas);
+  item.append(caixa);
+  return item;
+}
+
+/**
+ * Move o cartão pela função mover_cartao do banco: ela confere o WIP, muda a coluna e grava
+ * o movimento (origem, destino, data e hora, quem moveu), tudo junto.
+ */
+async function moverCartao(idCartao, paraColuna) {
+  if (!paraColuna) return;
+  const { error } = await supabase.rpc('mover_cartao', { p_cartao: idCartao, p_para_coluna: paraColuna });
+  if (error) {
+    mostrarMensagem(error.message); // a mensagem do banco já está em português (ex.: limite de WIP)
+    return;
+  }
+  await desenharColunas();
+}
+
+/** Lista "Responsável" do formulário de cartão novo: ninguém ou um dos membros do board. */
+function preencherResponsaveis(perfis) {
+  const lista = $('#responsavel-novo');
+  const escolhido = lista.value;
+  const ninguem = document.createElement('option');
+  ninguem.value = '';
+  ninguem.textContent = 'Ninguém';
+  const opcoes = [...perfis]
+    .sort((x, y) => x.nome.localeCompare(y.nome, 'pt-BR'))
+    .map((p) => {
+      const opcao = document.createElement('option');
+      opcao.value = p.id;
+      opcao.textContent = p.nome;
+      return opcao;
+    });
+  lista.replaceChildren(ninguem, ...opcoes);
+  // Mantém a escolha se a pessoa ainda estiver na lista (o quadro é redesenhado a cada ação).
+  lista.value = opcoes.some((o) => o.value === escolhido) ? escolhido : '';
+}
+
+$('#form-cartao').addEventListener('submit', (evento) => {
+  evento.preventDefault();
+  acao(criarCartao);
+});
+
+/** Cria o cartão na primeira coluna do board. O gatilho registrar_criacao grava o 1º movimento. */
+async function criarCartao() {
+  const titulo = $('#titulo-cartao-novo').value;
+  const pontos = $('#pontos-cartao-novo').value;
+  const erros = validarCartao({ titulo, pontos });
+  if (erros.length > 0) {
+    mostrarMensagem(erros.join(' '));
+    return;
+  }
+  // Só os campos que o banco deixa mandar (grant insert): criado_em e criado_por vêm do banco.
+  const { error } = await supabase.from('cartoes').insert({
+    board_id: boardAtual.id,
+    coluna_id: colunasAtuais[0].id, // a primeira coluna (colunasAtuais já vem na ordem do board)
+    titulo: titulo.trim(),
+    pontos: pontos.trim() === '' ? null : Number(pontos),
+    responsavel_id: $('#responsavel-novo').value || null,
+  });
+  if (error) {
+    mostrarMensagem('Não foi possível criar o cartão.');
+    return;
+  }
+  $('#form-cartao').reset();
+  await desenharColunas();
 }
 
 async function renomearColuna(coluna) {
