@@ -55,6 +55,19 @@
         <button id="voltar" type="button">← Meus boards</button>
         <h2 id="nome-board"></h2>
       </div>
+      <!-- História 3: o cartão novo entra na primeira coluna do board -->
+      <form id="form-cartao" class="formulario em-linha" novalidate>
+        <label>Novo cartão
+          <input id="titulo-cartao-novo" type="text">
+        </label>
+        <label>Pontos (opcional)
+          <input id="pontos-cartao-novo" type="text" inputmode="numeric" size="4">
+        </label>
+        <label>Responsável
+          <select id="responsavel-novo"><option value="">Ninguém</option></select>
+        </label>
+        <button type="submit">Criar cartão</button>
+      </form>
       <div id="quadro" class="quadro"></div>
       <form id="form-coluna" class="formulario em-linha" novalidate>
         <label>Nova coluna
