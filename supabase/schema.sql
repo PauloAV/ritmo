@@ -230,6 +230,10 @@ revoke update on public.boards from anon, authenticated;
 grant update (nome) on public.boards to authenticated;
 -- Board não é excluído por ninguém: o cascade apagaria cartões e movimentos (histórico).
 revoke delete on public.boards from anon, authenticated;
+-- Board novo: o usuário só informa o nome (história 2). Código de convite, id, criado_por e
+-- criado_em vêm dos defaults; assim ninguém escolhe um código fácil de adivinhar.
+revoke insert on public.boards from anon, authenticated;
+grant insert (nome) on public.boards to authenticated;
 
 -- Colunas: membros mudam nome, posição, WIP e política. Arquivar só por arquivar_coluna,
 -- e ninguém apaga coluna de verdade (os movimentos apontam para ela).
