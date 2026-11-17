@@ -323,3 +323,46 @@ Contas `teste<número>h4@teste.com` (Ana Teste), boards "Board H4 Teste" e cart�
 3. **Paulo:** gerar de novo o `PROJECT_TOKEN` (a Action do board falhou na H3 e na H4) e conferir se a #4 está na coluna certa do board.
 4. **Sprint 1 Review e Retrospectiva:** calcular as métricas da Sprint (`/metricas-sprint`).
 5. **Sprint 2:** filtrar os movimentos pelo board (a busca `.in('cartao_id', ...)` cresce com o número de cartões) e abrir as issues de testes do banco e de `reordenar_colunas`.
+
+---
+
+## 17/11/2026 · Paulo · Sprint 1 · merge da H4, token e métricas da Sprint 1
+
+### O que foi feito
+1. **PR #15 (H3):** o Kauan aprovou e mesclou (`595c26e`), com 4 observações. As que ficam para depois:
+   - a busca `.in('cartao_id', ...)` cresce com o número de cartões;
+   - se o responsável sair do board, a política "editar cartao" trava a edição do cartão até trocar o responsável. Hoje não há tela de edição, e mover não é afetado.
+2. **PR #16 (H4):** revisão pela DoD, com os testes numa cópia do PR (74 passando).
+   - **Aprovado com 4 sugestões** (teste da mensagem de WIP, desempate pelo `id`, comentário do CSS e um ponto para a defesa) e **mesclado** (`1767264`).
+   - A issue #4 fechou.
+3. **`PROJECT_TOKEN` gerado de novo** pelo Paulo, com `project`, `read:org` e `repo`. O rerun da Action da H3 passou: **o `unknown owner type` era falta de escopo no token.**
+4. **Início da #4 gravado à mão: 15/11**, a data do push da `historia-4-wip`.
+5. **Métricas da Sprint 1** (`/metricas-sprint`), na branch `metricas-sprint-1`:
+   - dados em `docs/metricas/sprint-1.json`, com o histórico de colunas tirado da API GraphQL (`PROJECT_V2_ITEM_STATUS_CHANGED_EVENT`);
+   - `scripts/metricas.mjs`, gráficos `burndown-sprint-1.svg` e `cfd-sprint-1.svg` e relatório `docs/metricas/sprint-1.md`;
+   - **Lead Time 5,0 dias · Cycle Time 2,25 dias · Throughput 4 · Velocity 16/16.**
+6. **Limpeza:** as branches mescladas `automacao-board`, `historia-1-conta-board` e `historia-3-cartoes-movimentos` foram apagadas, no GitHub e no computador. O `node` antigo da porta 8080 foi encerrado.
+
+### O que as métricas mostraram
+- Tudo foi entregue, mas **11 dos 16 pontos fecharam nos dois últimos dias**.
+- O Lead Time é mais que o dobro do Cycle Time: H3 e H4 esperaram no Sprint Backlog por depender da H1 e da H2.
+- A revisão da H1 levou 2 dias.
+- Bons pontos para a Retrospectiva: quebrar dependências, revisar mais rápido e começar em paralelo o que não depende de nada.
+
+### Decisões
+- Por causa do fim da Sprint, o PR #16 foi aprovado com as sugestões **depois do merge**, em vez de pedir o teste da mensagem de WIP antes.
+
+### Pendências
+1. **Confirmar com o time o Início da H1 e da H2.**
+   - Pelo log, a H1 começou em 11/11, e o board diz 12/11.
+   - O código da H2 começou em 14/11, e o board diz 12/11.
+   - Se mudar, coletar os dados de novo e rodar `node scripts/metricas.mjs docs/metricas/sprint-1.json`.
+2. **Commit e PR da branch `metricas-sprint-1`**, com as métricas, este log e o registro de IA.
+3. Conferir H2, H3 e H4 no Pages e trocar o link provisório do README.
+4. **Sprint Review e Retrospectiva da Sprint 1.**
+5. **Sprint 2, a partir das sugestões dos PRs #15 e #16:**
+   - teste da regra 2 para a mensagem de WIP;
+   - desempate pelo `id` nas passagens;
+   - filtrar os movimentos pelo board;
+   - testes do banco e `reordenar_colunas`.
+6. **Backlog (decisão do PO):** "arrastar com o mouse" e "editar cartão". No "editar cartão", tratar o responsável que saiu do board.
