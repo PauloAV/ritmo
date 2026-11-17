@@ -11,8 +11,8 @@ Projeto M2 de Métodos Ágeis, Engenharia de Software (UMC), 4ºC Noturno, Prof.
 | Kauan Ferreira da Silva | Scrum Master e Desenvolvedor |
 | Paulo Augusto de Jesus Vilela | Product Owner e Desenvolvedor |
 
-- **Projeto no ar:** _(link do GitHub Pages)_
-- **Board:** _(link do GitHub Projects)_
+- **Projeto no ar:** _https://pauloav.github.io/ritmo/_
+- **Board:** _https://github.com/users/PauloAV/projects/3_
 
 ## Tecnologias
 
