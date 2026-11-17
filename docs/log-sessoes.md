@@ -212,6 +212,33 @@ Todos podem ser apagados.
 
 ---
 
+## 15/11/2026 · Kauan · Sprint 1 · H4
+
+### O que foi feito
+1. **H4 (#4) com TDD**, branch `historia-4-wip` criada a partir da `main` e enviada na hora (para a Action do board gravar o Início):
+   - Regras em `js/regras.js`, logo depois do `validarMovimento`: `lerLimiteWip` (vazio = sem limite; só inteiro > 0, igual ao `check` do banco), `lerPolitica`, `formatarDataHora` (UTC → São Paulo) e `passagensDeWip`. São 48 testes.
+   - Tela: botão "WIP e política" em cada coluna; política abaixo do título; "n/limite" amarelo quando a coluna enche e vermelho quando passa; seção "Passagens do limite de WIP (para o Scrum Master)" no fim do board.
+   - **Banco sem mudança, sem migração.** `limite_wip`, `politica`, `movimentos.justificativa` e a conferência na `mover_cartao` já existiam.
+2. **Teste no navegador (headless, Chrome, tela de celular)**, no projeto do time: 21/21. Como a tela de mover é da H3, os movimentos foram feitos chamando `mover_cartao` direto: o 3º cartão em "Em andamento" (WIP 2) foi recusado sem justificativa e com justificativa só de espaços, e passou com justificativa. O update direto em `movimentos` foi recusado.
+
+### Decisões
+- **Critério 2 da H4:** a função `pedirJustificativaSePreciso` (em `js/app.js`) está pronta, mas ainda não é chamada. **Depois do merge da H3**, atualizar a branch da H4 com a `main` e chamar a função no mover da H3, antes da `rpc('mover_cartao')`, passando o `justificativa` dela em `p_justificativa`. Se `pode` vier `false`, não mover.
+- A seção do SM aparece para todo o time, porque o banco não tem papel de Scrum Master; o título diz para quem ela é.
+
+### Cuidados
+- A H4 saiu da `main`, sem a H2. Ao mesclar os dois PRs, esperar conflito simples em `js/app.js` (import e `abrirBoard`, que nas duas histórias chama mais de uma função de desenho), no `index.html` e no fim de `docs/registro-ia.md` e deste log. Manter as duas partes.
+- `mover_cartao` trava só o cartão: dois movimentos ao mesmo tempo para a mesma coluna ainda podem passar do WIP sem justificativa (já anotado na sessão de 11/11).
+
+### Dados fictícios criados
+- No Supabase do time: contas `teste<número>w@teste.com` (Ana Teste), boards "Board WIP Teste" e cartões "Cartão A/B/C". Podem ser apagados (os movimentos não saem pela tela, por regra).
+
+### Pendências
+1. **Paulo:** revisar o PR da H4. Ele só fica completo depois da H3 (critério 2).
+2. **Kauan:** depois do merge da H3, ligar `pedirJustificativaSePreciso` ao mover e repetir o teste no navegador pela tela.
+3. Sprint 1 termina em 17/11: o que não ficar pronto volta ao backlog.
+
+---
+
 ## 16 e 17/11/2026 · Paulo · Sprint 1 · merge da H2 e H3 (PR #15)
 
 ### O que foi feito
@@ -268,3 +295,31 @@ Todos podem ser apagados.
 5. **Fim da Sprint 1:** métricas (skill `/metricas-sprint`), Sprint Review e Retrospectiva. O que não ficar pronto volta ao backlog.
 6. **Backlog:** "arrastar com o mouse" e "editar cartão" ficaram fora da H3. Decidir com o PO se viram itens novos.
 7. **Pequenos:** encerrar o `node` antigo na porta 8080, se ainda estiver rodando; ver se o 404 do carregamento é mesmo o `favicon.ico`.
+
+---
+
+## 17/11/2026 · Kauan · Sprint 1 · revisão do PR #15 e fechamento da H4
+
+### O que foi feito
+1. **PR #14 (H2):** os 3 comentários da revisão do Paulo foram respondidos (`fee5414`: contagem "Membros (n)" zerada ao abrir o board e log atualizado). O Paulo aprovou e mesclou (`23caf21`).
+2. **Revisão do PR #15 (H3, do Paulo) pela DoD:** 64 testes, os 4 critérios e a DoD atendidos. **Aprovado e mesclado** (`595c26e`), e o deploy no Pages passou. A issue #3 fechou.
+3. **H4 atualizada com a `main`** (merge `4dac013`, na `historia-4-wip`):
+   - conflitos em `js/app.js` e nos docs resolvidos mantendo as duas partes;
+   - **`formatarDataHora` repetida:** a H3 e a H4 criaram a mesma função em linhas diferentes. O Git juntou **sem conflito** e deixou dois exports iguais, o que é erro de sintaxe. Ficou só a da H3, que dá o mesmo resultado;
+   - **critério 2 ligado:** o `moverCartao` da H3 chama `pedirJustificativaSePreciso` antes da `mover_cartao` e manda a justificativa. O Desfazer também passa por ele, e a lista do SM é redesenhada depois de mover.
+4. **Teste pela tela (headless, Chrome), no projeto do time, em 1280 px e 390 px:** 18/18 nas duas larguras. Passaram: política e "0/2" no topo; coluna sem limite com 3 cartões; "2/2" em destaque; Cancelar e justificativa só de espaços não movem; com justificativa move e mostra "3/2" em vermelho; justificativa gravada no movimento e na lista do SM; Desfazer para coluna sem limite não pergunta; Desfazer para coluna cheia pede justificativa; a H2 continua igual.
+5. **PR #16 (H4)** aberto, com o Paulo como revisor.
+
+### Para saber explicar na defesa
+- "Desfazer" é um movimento novo; clicar duas vezes refaz. Se a coluna de volta estiver cheia, ele também pede justificativa.
+- A tela conta os cartões do destino com os dados da última vez que desenhou o board. A `mover_cartao` confere de novo no banco, porque outra pessoa pode ter movido um cartão nesse meio-tempo.
+
+### Dados fictícios criados (no Supabase do time)
+Contas `teste<número>h4@teste.com` (Ana Teste), boards "Board H4 Teste" e cartões "Cartão A/B/C". Podem ser apagados (os movimentos não saem, por regra).
+
+### Pendências
+1. **Paulo:** revisar e mesclar o **PR #16 (H4)** hoje, para fechar a Sprint 1.
+2. **Depois do merge:** conferir H2, H3 e H4 no Pages e trocar o link provisório no README.
+3. **Paulo:** gerar de novo o `PROJECT_TOKEN` (a Action do board falhou na H3 e na H4) e conferir se a #4 está na coluna certa do board.
+4. **Sprint 1 Review e Retrospectiva:** calcular as métricas da Sprint (`/metricas-sprint`).
+5. **Sprint 2:** filtrar os movimentos pelo board (a busca `.in('cartao_id', ...)` cresce com o número de cartões) e abrir as issues de testes do banco e de `reordenar_colunas`.

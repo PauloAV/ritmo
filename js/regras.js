@@ -56,6 +56,60 @@ export function validarMovimento({ deColunaId, paraColuna, quantidadeNoDestino, 
   return [];
 }
 
+// ---------- História 4: limite de WIP com justificativa ----------
+
+/**
+ * Lê o limite de WIP digitado na tela. Vazio = coluna sem limite (aceita qualquer quantidade).
+ * Mesma regra do check da tabela colunas no schema.sql: limite_wip is null or limite_wip > 0.
+ * @param {string} texto
+ * @returns {{limite: number|null, erros: string[]}}
+ */
+export function lerLimiteWip(texto) {
+  const limpo = (texto ?? '').trim();
+  if (limpo === '') return { limite: null, erros: [] };
+  // Só dígitos: assim "2.5", "-1" e "3a" já ficam de fora; depois falta só recusar o zero.
+  if (!/^\d+$/.test(limpo) || Number(limpo) === 0) {
+    return {
+      limite: null,
+      erros: ['O limite de WIP precisa ser um número inteiro maior que zero (ou vazio para não ter limite).'],
+    };
+  }
+  return { limite: Number(limpo), erros: [] };
+}
+
+/** Política de entrada da coluna: sem espaços nas pontas; vazia vira null (sem política). */
+export function lerPolitica(texto) {
+  const limpo = (texto ?? '').trim();
+  return limpo === '' ? null : limpo;
+}
+
+/**
+ * Passagens do limite de WIP, para o Scrum Master acompanhar (história 4).
+ * Uma passagem = movimento com justificativa: a mover_cartao (schema.sql) só exige justificativa
+ * quando a coluna de destino está no limite.
+ * Devolve uma lista nova, da mais recente para a mais antiga; a original não muda.
+ * @param {{id: number, de_coluna_id: string|null, para_coluna_id: string, movido_por: string,
+ *          movido_em: string, justificativa: string|null, cartoes: {titulo: string}}[]} movimentos
+ * @param {{id: string, nome: string}[]} colunas inclusive as arquivadas (o histórico pode passar por elas)
+ * @param {{id: string, nome: string}[]} perfis
+ */
+export function passagensDeWip(movimentos, colunas, perfis) {
+  const nomeDaColuna = (id) => colunas.find((c) => c.id === id)?.nome ?? 'Coluna desconhecida';
+  const nomeDaPessoa = (id) => perfis.find((p) => p.id === id)?.nome ?? 'Membro sem nome';
+  return movimentos
+    .filter((m) => m.justificativa)
+    .sort((x, y) => new Date(y.movido_em) - new Date(x.movido_em))
+    .map((m) => ({
+      id: m.id,
+      quando: formatarDataHora(m.movido_em),
+      cartao: m.cartoes.titulo,
+      de: nomeDaColuna(m.de_coluna_id),
+      para: nomeDaColuna(m.para_coluna_id),
+      quem: nomeDaPessoa(m.movido_por),
+      justificativa: m.justificativa,
+    }));
+}
+
 // ---------- História 1: conta ----------
 
 /** Tamanho mínimo de senha (o mesmo padrão do Supabase Auth). */

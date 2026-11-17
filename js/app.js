@@ -1,11 +1,13 @@
 // Telas do Ritmo. História 1: entrar/cadastrar, meus boards e o board com as colunas.
 // História 2: código de convite, entrar no board por código e lista de membros.
 // História 3: cartões, mover entre colunas (botões ← →), desfazer e histórico de movimentos.
+// História 4: limite de WIP e política por coluna, justificativa ao passar do limite e lista para o SM.
 // Segurança: texto digitado pelo usuário entra na página só por textContent (nunca innerHTML),
 // para ninguém conseguir injetar HTML ou script pelo nome de um board ou coluna.
 import { supabase } from './supabase.js';
 import {
-  situacaoWip, validarCredenciais, validarCadastro, traduzirErroAuth,
+  situacaoWip, validarMovimento, lerLimiteWip, lerPolitica, passagensDeWip,
+  validarCredenciais, validarCadastro, traduzirErroAuth,
   validarNome, moverColunaNaOrdem, podeArquivarColuna, proximaPosicao, colunasQueMudaram,
   normalizarCodigo, validarCodigoConvite, nomesDosMembros,
   validarCartao, colunaVizinha, montarHistorico, movimentoParaDesfazer,
@@ -235,6 +237,7 @@ async function entrarComCodigo() {
 
 let boardAtual = null;
 let colunasAtuais = []; // só as ativas (sem as arquivadas), na ordem do board
+let cartoesAtuais = []; // cartões do board, para contar quantos há no destino (WIP, história 4)
 
 async function abrirBoard(board) {
   boardAtual = board;
@@ -243,7 +246,9 @@ async function abrirBoard(board) {
   $('#codigo-board').textContent = board.codigo_convite;
   $('#lista-membros').replaceChildren(); // apaga os membros do board anterior
   $('#titulo-membros').textContent = 'Membros'; // e a contagem antiga também (revisão do Paulo)
-  await desenharColunas(); // desenha também a lista de membros (desenharMembros)
+  $('#lista-passagens').replaceChildren(); // apaga as passagens do board anterior
+  // desenharColunas desenha também a lista de membros (desenharMembros).
+  await Promise.all([desenharColunas(), desenharPassagens()]);
 }
 
 /**
@@ -270,7 +275,8 @@ $('#voltar').addEventListener('click', () => acao(abrirMeusBoards));
 async function desenharColunas() {
   const [colunas, cartoes, membros] = await Promise.all([
     // Todas as colunas, inclusive as arquivadas: o histórico mostra o nome delas.
-    supabase.from('colunas').select('id, nome, posicao, limite_wip, papel, arquivada')
+    // politica (história 4) aparece abaixo do título da coluna.
+    supabase.from('colunas').select('id, nome, posicao, limite_wip, politica, papel, arquivada')
       .eq('board_id', boardAtual.id).order('posicao'),
     supabase.from('cartoes').select('id, coluna_id, titulo, pontos, responsavel_id')
       .eq('board_id', boardAtual.id).order('criado_em'),
@@ -294,6 +300,7 @@ async function desenharColunas() {
   }
 
   colunasAtuais = colunas.data.filter((c) => !c.arquivada);
+  cartoesAtuais = cartoes.data;
   desenharMembros(membros.data, perfis.data);
   preencherResponsaveis(perfis.data);
   const cartoesNa = (idColuna) => cartoes.data.filter((c) => c.coluna_id === idColuna);
@@ -303,13 +310,17 @@ async function desenharColunas() {
   quadro.replaceChildren();
   colunasAtuais.forEach((coluna, i) => {
     const quantidade = quantidadeNa(coluna.id);
-    const { texto } = situacaoWip({ limiteWip: coluna.limite_wip }, quantidade);
+    const { texto, cheia, acima } = situacaoWip({ limiteWip: coluna.limite_wip }, quantidade);
 
     const nome = document.createElement('span');
     nome.textContent = coluna.nome;
     const wip = document.createElement('span');
-    wip.className = 'wip';
+    // "2/2" no topo (história 4): em destaque quando a coluna enche e em vermelho quando passa.
+    wip.className = acima ? 'wip acima' : cheia ? 'wip cheia' : 'wip';
     wip.textContent = texto;
+    wip.title = coluna.limite_wip == null
+      ? 'Cartões na coluna (sem limite de WIP)'
+      : 'Cartões na coluna / limite de WIP';
     const titulo = document.createElement('h3');
     titulo.append(nome, wip);
 
@@ -317,6 +328,8 @@ async function desenharColunas() {
     acoes.className = 'acoes';
     acoes.append(
       criarBotao('Renomear', `Renomear a coluna ${coluna.nome}`, () => acao(() => renomearColuna(coluna))),
+      criarBotao('WIP e política', `Mudar o limite de WIP e a política da coluna ${coluna.nome}`,
+        () => acao(() => editarWipEPolitica(coluna))),
       criarBotao('←', `Mover ${coluna.nome} uma posição para trás`,
         () => acao(() => reordenarColuna(coluna.id, -1)), i === 0),
       criarBotao('→', `Mover ${coluna.nome} uma posição para frente`,
@@ -329,7 +342,15 @@ async function desenharColunas() {
 
     const secao = document.createElement('section');
     secao.className = 'coluna';
-    secao.append(titulo, acoes);
+    secao.append(titulo);
+    // Política de entrada (história 4), visível no topo. textContent: texto do usuário nunca vira HTML.
+    if (coluna.politica) {
+      const politica = document.createElement('p');
+      politica.className = 'politica';
+      politica.textContent = `Política: ${coluna.politica}`;
+      secao.append(politica);
+    }
+    secao.append(acoes);
 
     // Texto visível com o motivo do "Excluir" desativado (o title de botão desativado
     // nem sempre aparece no navegador).
@@ -389,14 +410,14 @@ function desenharCartao(cartao, movimentos, todasAsColunas, perfis) {
   acoes.className = 'acoes';
   acoes.append(
     criarBotao('←', esquerda ? `Mover "${cartao.titulo}" para ${nomeDa(esquerda)}` : 'Não há coluna à esquerda',
-      () => acao(() => moverCartao(cartao.id, esquerda)), !esquerda),
+      () => acao(() => moverCartao(cartao, esquerda)), !esquerda),
     criarBotao('→', direita ? `Mover "${cartao.titulo}" para ${nomeDa(direita)}` : 'Não há coluna à direita',
-      () => acao(() => moverCartao(cartao.id, direita)), !direita),
+      () => acao(() => moverCartao(cartao, direita)), !direita),
     // Desfazer = movimento NOVO de volta para a coluna de origem; nada é apagado do histórico.
     criarBotao('Desfazer',
       voltarPara ? `Desfazer o último movimento de "${cartao.titulo}" (volta para ${nomeDa(voltarPara)})`
         : 'O cartão acabou de ser criado: não há movimento para desfazer',
-      () => acao(() => moverCartao(cartao.id, voltarPara)), !voltarPara),
+      () => acao(() => moverCartao(cartao, voltarPara)), !voltarPara),
   );
   item.append(acoes);
 
@@ -419,16 +440,31 @@ function desenharCartao(cartao, movimentos, todasAsColunas, perfis) {
 
 /**
  * Move o cartão pela função mover_cartao do banco: ela confere o WIP, muda a coluna e grava
- * o movimento (origem, destino, data e hora, quem moveu), tudo junto.
+ * o movimento (origem, destino, data e hora, quem moveu e a justificativa), tudo junto.
+ * Serve para os botões ← → e para o Desfazer (história 3).
  */
-async function moverCartao(idCartao, paraColuna) {
+async function moverCartao(cartao, paraColuna) {
   if (!paraColuna) return;
-  const { error } = await supabase.rpc('mover_cartao', { p_cartao: idCartao, p_para_coluna: paraColuna });
+  // Desfazer pode apontar para uma coluna que foi arquivada depois: ela não está mais no board.
+  const destino = colunasAtuais.find((c) => c.id === paraColuna);
+  if (!destino) {
+    mostrarMensagem('A coluna de destino não existe neste board.');
+    return;
+  }
+  // História 4: se o destino está no limite de WIP, avisa e pede a justificativa antes de mover.
+  const quantidadeNoDestino = cartoesAtuais.filter((c) => c.coluna_id === paraColuna).length;
+  const { pode, justificativa } = pedirJustificativaSePreciso(destino, cartao.coluna_id, quantidadeNoDestino);
+  if (!pode) return; // cancelou ou deixou a justificativa vazia: o cartão fica onde está
+
+  const { error } = await supabase.rpc('mover_cartao', {
+    p_cartao: cartao.id, p_para_coluna: paraColuna, p_justificativa: justificativa,
+  });
   if (error) {
     mostrarMensagem(error.message); // a mensagem do banco já está em português (ex.: limite de WIP)
     return;
   }
-  await desenharColunas();
+  // A passagem do limite aparece na hora na lista do Scrum Master.
+  await Promise.all([desenharColunas(), desenharPassagens()]);
 }
 
 /** Lista "Responsável" do formulário de cartão novo: ninguém ou um dos membros do board. */
@@ -495,6 +531,104 @@ async function renomearColuna(coluna) {
     return;
   }
   await desenharColunas();
+}
+
+/** Muda o limite de WIP e a política de entrada da coluna (história 4). */
+async function editarWipEPolitica(coluna) {
+  const digitado = prompt(
+    `Limite de WIP da coluna "${coluna.nome}" (deixe vazio para não ter limite):`,
+    coluna.limite_wip ?? '',
+  );
+  if (digitado === null) return; // clicou em Cancelar
+  const { limite, erros } = lerLimiteWip(digitado);
+  if (erros.length > 0) {
+    mostrarMensagem(erros.join(' '));
+    return;
+  }
+  const politica = prompt(
+    `Política de entrada da coluna "${coluna.nome}" (ex.: "Só entra com critério de aceite claro"; vazio = sem política):`,
+    coluna.politica ?? '',
+  );
+  if (politica === null) return;
+
+  const { error } = await supabase.from('colunas')
+    .update({ limite_wip: limite, politica: lerPolitica(politica) }).eq('id', coluna.id);
+  if (error) {
+    mostrarMensagem('Não foi possível salvar o limite de WIP e a política.');
+    return;
+  }
+  await desenharColunas();
+}
+
+/**
+ * Antes de mover um cartão (história 4): se a coluna de destino está no limite de WIP, avisa e
+ * pede a justificativa. Quem chama é o moverCartao (história 3), que depois manda a justificativa para a
+ * mover_cartao (p_justificativa). O banco confere de novo, porque pode ter entrado outro cartão.
+ * @param {{id: string, nome: string, limite_wip: number|null, politica: string|null}} destino
+ * @param {string} deColunaId coluna onde o cartão está agora
+ * @param {number} quantidadeNoDestino cartões que já estão no destino
+ * @returns {{pode: boolean, justificativa: string|null}} pode = false quando a pessoa desistiu
+ */
+function pedirJustificativaSePreciso(destino, deColunaId, quantidadeNoDestino) {
+  const paraColuna = { id: destino.id, limiteWip: destino.limite_wip };
+  const { cheia, texto } = situacaoWip(paraColuna, quantidadeNoDestino);
+  if (!cheia) return { pode: true, justificativa: null }; // cabe (ou não tem limite): não pergunta nada
+
+  const politica = destino.politica ? `\nPolítica da coluna: ${destino.politica}` : '';
+  const justificativa = prompt(
+    `A coluna "${destino.nome}" está no limite de WIP (${texto}).${politica}\n`
+    + 'Para mover mesmo assim, escreva a justificativa (o Scrum Master vai ver):',
+  );
+  if (justificativa === null) return { pode: false, justificativa: null }; // Cancelar
+  const erros = validarMovimento({ deColunaId, paraColuna, quantidadeNoDestino, justificativa });
+  if (erros.length > 0) {
+    mostrarMensagem(erros.join(' '));
+    return { pode: false, justificativa: null };
+  }
+  return { pode: true, justificativa: justificativa.trim() };
+}
+
+/**
+ * Passagens do limite de WIP, para o Scrum Master (história 4): movimentos com justificativa.
+ * movimentos não tem board_id; o cartoes!inner junta o cartão e filtra pelo board dele.
+ * As colunas vêm inclusive as arquivadas, porque o histórico pode ter passado por elas.
+ */
+async function desenharPassagens() {
+  const [movimentos, colunas] = await Promise.all([
+    supabase.from('movimentos')
+      .select('id, de_coluna_id, para_coluna_id, movido_por, movido_em, justificativa, cartoes!inner(titulo, board_id)')
+      .eq('cartoes.board_id', boardAtual.id).not('justificativa', 'is', null),
+    supabase.from('colunas').select('id, nome').eq('board_id', boardAtual.id),
+  ]);
+  if (movimentos.error || colunas.error) {
+    mostrarMensagem('Não foi possível carregar as passagens do limite de WIP.');
+    return;
+  }
+  const idsPessoas = [...new Set(movimentos.data.map((m) => m.movido_por))];
+  const perfis = await supabase.from('perfis').select('id, nome').in('id', idsPessoas);
+  if (perfis.error) {
+    mostrarMensagem('Não foi possível carregar as passagens do limite de WIP.');
+    return;
+  }
+
+  const passagens = passagensDeWip(movimentos.data, colunas.data, perfis.data);
+  const lista = $('#lista-passagens');
+  if (passagens.length === 0) {
+    const vazio = document.createElement('li');
+    vazio.textContent = 'Nenhum cartão passou do limite de WIP neste board.';
+    lista.replaceChildren(vazio);
+    return;
+  }
+  // textContent em tudo: título, nomes e justificativa foram digitados por usuários.
+  lista.replaceChildren(...passagens.map((p) => {
+    const item = document.createElement('li');
+    const cabecalho = document.createElement('strong');
+    cabecalho.textContent = `${p.quando} · ${p.cartao}: ${p.de} → ${p.para} · ${p.quem}`;
+    const motivo = document.createElement('p');
+    motivo.textContent = `Justificativa: ${p.justificativa}`;
+    item.append(cabecalho, motivo);
+    return item;
+  }));
 }
 
 async function reordenarColuna(idColuna, direcao) {
