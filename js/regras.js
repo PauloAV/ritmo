@@ -84,22 +84,6 @@ export function lerPolitica(texto) {
 }
 
 /**
- * Data e hora do banco (guardada em UTC) no horário de São Paulo, no formato "15/11/2026 14:30".
- * Regra 5 do CLAUDE.md: guardar em UTC e converter para o fuso de São Paulo só na tela.
- * @param {string} iso ex.: '2026-11-15T17:30:00Z'
- */
-export function formatarDataHora(iso) {
-  const partes = new Intl.DateTimeFormat('pt-BR', {
-    timeZone: 'America/Sao_Paulo',
-    day: '2-digit', month: '2-digit', year: 'numeric',
-    hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
-  }).formatToParts(new Date(iso));
-  // Monta o texto pelas partes, porque a vírgula entre data e hora muda de um navegador para outro.
-  const p = Object.fromEntries(partes.map(({ type, value }) => [type, value]));
-  return `${p.day}/${p.month}/${p.year} ${p.hour}:${p.minute}`;
-}
-
-/**
  * Passagens do limite de WIP, para o Scrum Master acompanhar (história 4).
  * Uma passagem = movimento com justificativa: a mover_cartao (schema.sql) só exige justificativa
  * quando a coluna de destino está no limite.
@@ -246,4 +230,141 @@ export function colunasQueMudaram(antes, depois) {
     const antiga = antes.find((c) => c.id === nova.id);
     return !antiga || antiga.posicao !== nova.posicao;
   });
+}
+
+// ---------- História 2: convite por código ----------
+
+/**
+ * Deixa o código digitado igual ao guardado no banco: sem espaços nas pontas e em maiúsculas.
+ * Mesmo tratamento do entrar_no_board no schema.sql: upper(trim(p_codigo)).
+ * @param {string} texto
+ */
+export function normalizarCodigo(texto) {
+  return (texto ?? '').trim().toUpperCase();
+}
+
+/**
+ * Confere o código antes de chamar o banco. O banco gera 6 caracteres (codigo_convite no schema.sql);
+ * código fora desse formato nem existe, então já sai a mesma mensagem que o entrar_no_board daria.
+ * @param {string} texto
+ */
+export function validarCodigoConvite(texto) {
+  const codigo = normalizarCodigo(texto);
+  if (codigo === '') return ['Digite o código de convite.'];
+  if (!/^[A-Z0-9]{6}$/.test(codigo)) return ['Código de convite inválido.'];
+  return [];
+}
+
+/**
+ * Lista de membros do board: junta as linhas de membros com os nomes em perfis
+ * (as duas tabelas ligam em auth.users, por isso a tela faz duas buscas) e ordena por quem entrou primeiro.
+ * Devolve uma lista nova; as originais não mudam.
+ * @param {{usuario_id: string, entrou_em: string}[]} membros
+ * @param {{id: string, nome: string}[]} perfis
+ */
+export function nomesDosMembros(membros, perfis) {
+  return [...membros]
+    .sort((x, y) => new Date(x.entrou_em) - new Date(y.entrou_em))
+    .map((m) => perfis.find((p) => p.id === m.usuario_id)?.nome ?? 'Membro sem nome');
+}
+
+// ---------- História 3: cartões com histórico de movimentos ----------
+
+/**
+ * Confere o cartão antes de criar. Mesmas regras dos checks da tabela cartoes no schema.sql:
+ * título com texto (length(trim(titulo)) > 0) e pontos vazio ou inteiro >= 0.
+ * O responsável é opcional e vem de uma lista de membros, por isso não precisa de validação aqui.
+ * @param {{titulo: string, pontos: string}} cartao pontos como veio do campo (texto)
+ * @returns {string[]} lista de erros; vazia quando está tudo certo
+ */
+export function validarCartao({ titulo, pontos }) {
+  const erros = [];
+  if ((titulo ?? '').trim() === '') {
+    erros.push('O título do cartão é obrigatório.');
+  }
+  const p = (pontos ?? '').trim();
+  if (p !== '' && !/^[0-9]+$/.test(p)) {   // só algarismos: sem sinal, vírgula ou letra
+    erros.push('Os pontos precisam ser um número inteiro, de 0 para cima.');
+  }
+  return erros;
+}
+
+/**
+ * Coluna para onde o cartão vai pelos botões ← e → (história 3): a vizinha pela posição,
+ * pulando as arquivadas. Na ponta do board não há vizinha (null), e o botão fica desativado.
+ * @param {{id: string, posicao: number, arquivada?: boolean}[]} colunas
+ * @param {string} idAtual coluna em que o cartão está
+ * @param {-1|1} direcao -1 = esquerda, +1 = direita
+ * @returns {string|null} id da coluna vizinha
+ */
+export function colunaVizinha(colunas, idAtual, direcao) {
+  const ativas = colunas
+    .filter((c) => !c.arquivada)
+    .sort((x, y) => x.posicao - y.posicao);
+  const i = ativas.findIndex((c) => c.id === idAtual);
+  const vizinha = ativas[i + direcao];
+  return i === -1 || !vizinha ? null : vizinha.id;
+}
+
+/** Fuso da tela. O banco guarda tudo em UTC (timestamptz); só a tela converte (regra 5). */
+export const FUSO_DA_TELA = 'America/Sao_Paulo';
+
+const formatoDataHora = new Intl.DateTimeFormat('pt-BR', {
+  timeZone: FUSO_DA_TELA,
+  day: '2-digit', month: '2-digit', year: 'numeric',
+  hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
+});
+
+/**
+ * Data e hora de um movimento para mostrar na tela, no horário de São Paulo: "16/11/2026 12:03".
+ * Monta o texto pelas partes (dia, mês...) para não depender da vírgula que cada navegador põe.
+ * @param {string} iso data em UTC, como vem do banco (ex.: "2026-11-16T15:03:00+00:00")
+ */
+export function formatarDataHora(iso) {
+  const partes = {};
+  for (const { type, value } of formatoDataHora.formatToParts(new Date(iso))) {
+    partes[type] = value;
+  }
+  return `${partes.day}/${partes.month}/${partes.year} ${partes.hour}:${partes.minute}`;
+}
+
+/**
+ * Movimentos em ordem, do mais antigo para o mais novo: pela hora e, na mesma hora, pelo id
+ * (o id do movimento só cresce). Devolve uma lista nova; a original não muda.
+ * @param {{id: number, movido_em: string}[]} movimentos
+ */
+function emOrdem(movimentos) {
+  return [...movimentos].sort((x, y) => (new Date(x.movido_em) - new Date(y.movido_em)) || (x.id - y.id));
+}
+
+/**
+ * Histórico que aparece no cartão (história 3), só para ler: ninguém edita nem apaga movimentos.
+ * de_coluna_id nulo é a criação do cartão (o gatilho registrar_criacao grava esse primeiro movimento).
+ * Coluna arquivada continua com nome, porque os movimentos antigos apontam para ela.
+ * @param {{id: number, de_coluna_id: string|null, para_coluna_id: string, movido_por: string,
+ *          movido_em: string}[]} movimentos de um cartão
+ * @param {{id: string, nome: string}[]} colunas todas as colunas do board, inclusive as arquivadas
+ * @param {{id: string, nome: string}[]} perfis
+ * @returns {{quando: string, quem: string, texto: string}[]}
+ */
+export function montarHistorico(movimentos, colunas, perfis) {
+  const nomeDaColuna = (id) => colunas.find((c) => c.id === id)?.nome ?? 'Coluna desconhecida';
+  return emOrdem(movimentos).map((m) => ({
+    quando: formatarDataHora(m.movido_em),
+    quem: perfis.find((p) => p.id === m.movido_por)?.nome ?? 'Membro sem nome',
+    texto: m.de_coluna_id === null
+      ? `Criado em ${nomeDaColuna(m.para_coluna_id)}`
+      : `${nomeDaColuna(m.de_coluna_id)} → ${nomeDaColuna(m.para_coluna_id)}`,
+  }));
+}
+
+/**
+ * "Desfazer" o último movimento (história 3) sem apagar nada: a tela chama mover_cartao de volta
+ * para a coluna de origem, e isso grava um movimento NOVO. O histórico fica com os dois.
+ * @param {{id: number, de_coluna_id: string|null, movido_em: string}[]} movimentos de um cartão
+ * @returns {string|null} coluna para onde o cartão volta; null se ele só foi criado (nada a desfazer)
+ */
+export function movimentoParaDesfazer(movimentos) {
+  const ultimo = emOrdem(movimentos).at(-1);
+  return ultimo?.de_coluna_id ?? null;
 }

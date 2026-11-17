@@ -1,4 +1,6 @@
 // Telas do Ritmo. História 1: entrar/cadastrar, meus boards e o board com as colunas.
+// História 2: código de convite, entrar no board por código e lista de membros.
+// História 3: cartões, mover entre colunas (botões ← →), desfazer e histórico de movimentos.
 // História 4: limite de WIP e política por coluna, justificativa ao passar do limite e lista para o SM.
 // Segurança: texto digitado pelo usuário entra na página só por textContent (nunca innerHTML),
 // para ninguém conseguir injetar HTML ou script pelo nome de um board ou coluna.
@@ -7,7 +9,12 @@ import {
   situacaoWip, validarMovimento, lerLimiteWip, lerPolitica, passagensDeWip,
   validarCredenciais, validarCadastro, traduzirErroAuth,
   validarNome, moverColunaNaOrdem, podeArquivarColuna, proximaPosicao, colunasQueMudaram,
+  normalizarCodigo, validarCodigoConvite, nomesDosMembros,
+  validarCartao, colunaVizinha, montarHistorico, movimentoParaDesfazer,
 } from './regras.js';
+
+// Campos do board que as telas usam (o código de convite aparece no board, história 2).
+const CAMPOS_BOARD = 'id, nome, codigo_convite';
 
 const $ = (seletor) => document.querySelector(seletor);
 
@@ -148,7 +155,7 @@ async function abrirMeusBoards() {
   $('#lista-boards').replaceChildren(); // apaga a lista antiga enquanto a nova não chega
 
   // O RLS ("ver meus boards") faz o banco devolver só os boards de que a pessoa é membro.
-  const { data: boards, error } = await supabase.from('boards').select('id, nome').order('criado_em');
+  const { data: boards, error } = await supabase.from('boards').select(CAMPOS_BOARD).order('criado_em');
   if (error) {
     mostrarMensagem('Não foi possível carregar os boards.');
     return;
@@ -183,7 +190,7 @@ async function criarBoard() {
 
   // O gatilho preparar_board cria as 5 colunas padrão e coloca quem criou como membro.
   const { data: board, error } = await supabase
-    .from('boards').insert({ nome: nome.trim() }).select('id, nome').single();
+    .from('boards').insert({ nome: nome.trim() }).select(CAMPOS_BOARD).single();
   if (error) {
     mostrarMensagem('Não foi possível criar o board.');
     return;
@@ -192,34 +199,112 @@ async function criarBoard() {
   await abrirBoard(board);
 }
 
+$('#form-convite').addEventListener('submit', (evento) => {
+  evento.preventDefault();
+  acao(entrarComCodigo);
+});
+
+async function entrarComCodigo() {
+  const digitado = $('#codigo-convite').value;
+  const erros = validarCodigoConvite(digitado);
+  if (erros.length > 0) {
+    mostrarMensagem(erros.join(' '));
+    return;
+  }
+
+  // entrar_no_board (schema.sql) procura o board pelo código e coloca a pessoa como membro.
+  // Se ela já era membro, nada muda e o board só abre. Código que não existe: o banco recusa.
+  const { data: idBoard, error } = await supabase.rpc('entrar_no_board', { p_codigo: normalizarCodigo(digitado) });
+  if (error) {
+    // A frase do banco para código errado é a mesma de validarCodigoConvite (teste da regra 2).
+    const codigoErrado = error.message === 'Código de convite inválido.';
+    mostrarMensagem(codigoErrado ? error.message : 'Não foi possível entrar no board.');
+    return;
+  }
+
+  // Agora que é membro, o RLS deixa ler o board.
+  const { data: board, error: erroBoard } = await supabase
+    .from('boards').select(CAMPOS_BOARD).eq('id', idBoard).single();
+  if (erroBoard) {
+    mostrarMensagem('Você entrou no board, mas não foi possível abri-lo. Volte a Meus boards.');
+    return;
+  }
+  $('#form-convite').reset();
+  await abrirBoard(board);
+}
+
 // ---------- Tela 3: o board com as colunas ----------
 
 let boardAtual = null;
-let colunasAtuais = [];
+let colunasAtuais = []; // só as ativas (sem as arquivadas), na ordem do board
+let cartoesAtuais = []; // cartões do board, para contar quantos há no destino (WIP, história 4)
 
 async function abrirBoard(board) {
   boardAtual = board;
   mostrarTela('tela-board');
   $('#nome-board').textContent = board.nome;
+  $('#codigo-board').textContent = board.codigo_convite;
+  $('#lista-membros').replaceChildren(); // apaga os membros do board anterior
+  $('#titulo-membros').textContent = 'Membros'; // e a contagem antiga também (revisão do Paulo)
   $('#lista-passagens').replaceChildren(); // apaga as passagens do board anterior
+  // desenharColunas desenha também a lista de membros (desenharMembros).
   await Promise.all([desenharColunas(), desenharPassagens()]);
+}
+
+/**
+ * Lista quem é membro do board (história 2), na ordem em que cada um entrou.
+ * Os dados vêm de desenharColunas, que já busca membros e perfis para os cartões (história 3).
+ */
+function desenharMembros(membros, perfis) {
+  const nomes = nomesDosMembros(membros, perfis);
+  $('#titulo-membros').textContent = `Membros (${nomes.length}):`;
+  $('#lista-membros').replaceChildren(...nomes.map((nome) => {
+    const item = document.createElement('li');
+    item.textContent = nome; // textContent: nome digitado pelo usuário nunca vira HTML
+    return item;
+  }));
 }
 
 $('#voltar').addEventListener('click', () => acao(abrirMeusBoards));
 
-/** Busca as colunas (sem as arquivadas) e quantos cartões há em cada uma, e desenha o quadro. */
+/**
+ * Busca tudo o que o board mostra e desenha o quadro: colunas, cartões, o histórico de cada cartão
+ * e os membros (para o nome do responsável, de quem moveu e a lista do formulário de cartão novo).
+ * O RLS só devolve dados de boards de que a pessoa é membro.
+ */
 async function desenharColunas() {
-  const [colunas, cartoes] = await Promise.all([
-    supabase.from('colunas').select('id, nome, posicao, limite_wip, politica, papel')
-      .eq('board_id', boardAtual.id).eq('arquivada', false).order('posicao'),
-    supabase.from('cartoes').select('coluna_id').eq('board_id', boardAtual.id),
+  const [colunas, cartoes, membros] = await Promise.all([
+    // Todas as colunas, inclusive as arquivadas: o histórico mostra o nome delas.
+    // politica (história 4) aparece abaixo do título da coluna.
+    supabase.from('colunas').select('id, nome, posicao, limite_wip, politica, papel, arquivada')
+      .eq('board_id', boardAtual.id).order('posicao'),
+    supabase.from('cartoes').select('id, coluna_id, titulo, pontos, responsavel_id')
+      .eq('board_id', boardAtual.id).order('criado_em'),
+    supabase.from('membros').select('usuario_id, entrou_em').eq('board_id', boardAtual.id),
   ]);
-  if (colunas.error || cartoes.error) {
+  if (colunas.error || cartoes.error || membros.error) {
     mostrarMensagem('Não foi possível carregar o board.');
     return;
   }
-  colunasAtuais = colunas.data;
-  const quantidadeNa = (idColuna) => cartoes.data.filter((c) => c.coluna_id === idColuna).length;
+  // Movimentos e perfis dependem dos ids que acabaram de chegar, por isso vêm numa segunda busca.
+  // (membros e perfis ligam em auth.users, não uma na outra, por isso não dá para buscar juntos.)
+  const [movimentos, perfis] = await Promise.all([
+    supabase.from('movimentos')
+      .select('id, cartao_id, de_coluna_id, para_coluna_id, movido_por, movido_em')
+      .in('cartao_id', cartoes.data.map((c) => c.id)),
+    supabase.from('perfis').select('id, nome').in('id', membros.data.map((m) => m.usuario_id)),
+  ]);
+  if (movimentos.error || perfis.error) {
+    mostrarMensagem('Não foi possível carregar o board.');
+    return;
+  }
+
+  colunasAtuais = colunas.data.filter((c) => !c.arquivada);
+  cartoesAtuais = cartoes.data;
+  desenharMembros(membros.data, perfis.data);
+  preencherResponsaveis(perfis.data);
+  const cartoesNa = (idColuna) => cartoes.data.filter((c) => c.coluna_id === idColuna);
+  const quantidadeNa = (idColuna) => cartoesNa(idColuna).length;
 
   const quadro = $('#quadro');
   quadro.replaceChildren();
@@ -277,8 +362,159 @@ async function desenharColunas() {
         : 'Fim do fluxo nas métricas: não pode ser excluída.';
       secao.append(aviso);
     }
+
+    // Cartões da coluna (história 3).
+    const lista = document.createElement('ol');
+    lista.className = 'cartoes';
+    lista.setAttribute('aria-label', `Cartões em ${coluna.nome}`);
+    for (const cartao of cartoesNa(coluna.id)) {
+      const doCartao = movimentos.data.filter((m) => m.cartao_id === cartao.id);
+      lista.append(desenharCartao(cartao, doCartao, colunas.data, perfis.data));
+    }
+    secao.append(lista);
     quadro.append(secao);
   });
+}
+
+/**
+ * Um cartão: título, pontos e responsável; botões ← → (mover) e Desfazer; e o histórico.
+ * Todo texto do usuário entra por textContent.
+ */
+function desenharCartao(cartao, movimentos, todasAsColunas, perfis) {
+  const item = document.createElement('li');
+  item.className = 'cartao';
+
+  const titulo = document.createElement('p');
+  titulo.className = 'titulo-cartao';
+  titulo.textContent = cartao.titulo;
+  item.append(titulo);
+
+  const detalhes = [];
+  if (cartao.pontos !== null) detalhes.push(`${cartao.pontos} pt`);
+  if (cartao.responsavel_id) {
+    detalhes.push(perfis.find((p) => p.id === cartao.responsavel_id)?.nome ?? 'Membro sem nome');
+  }
+  if (detalhes.length > 0) {
+    const info = document.createElement('p');
+    info.className = 'info-cartao';
+    info.textContent = detalhes.join(' · ');
+    item.append(info);
+  }
+
+  // Botões em vez de arrastar: funcionam no celular e no teclado.
+  const esquerda = colunaVizinha(colunasAtuais, cartao.coluna_id, -1);
+  const direita = colunaVizinha(colunasAtuais, cartao.coluna_id, +1);
+  const voltarPara = movimentoParaDesfazer(movimentos);
+  const nomeDa = (id) => todasAsColunas.find((c) => c.id === id)?.nome;
+  const acoes = document.createElement('div');
+  acoes.className = 'acoes';
+  acoes.append(
+    criarBotao('←', esquerda ? `Mover "${cartao.titulo}" para ${nomeDa(esquerda)}` : 'Não há coluna à esquerda',
+      () => acao(() => moverCartao(cartao, esquerda)), !esquerda),
+    criarBotao('→', direita ? `Mover "${cartao.titulo}" para ${nomeDa(direita)}` : 'Não há coluna à direita',
+      () => acao(() => moverCartao(cartao, direita)), !direita),
+    // Desfazer = movimento NOVO de volta para a coluna de origem; nada é apagado do histórico.
+    criarBotao('Desfazer',
+      voltarPara ? `Desfazer o último movimento de "${cartao.titulo}" (volta para ${nomeDa(voltarPara)})`
+        : 'O cartão acabou de ser criado: não há movimento para desfazer',
+      () => acao(() => moverCartao(cartao, voltarPara)), !voltarPara),
+  );
+  item.append(acoes);
+
+  // Histórico só para ler: não há botão de editar nem de apagar (e o banco também não deixa).
+  const historico = montarHistorico(movimentos, todasAsColunas, perfis);
+  const caixa = document.createElement('details');
+  const resumo = document.createElement('summary');
+  resumo.textContent = `Histórico (${historico.length})`;
+  const linhas = document.createElement('ol');
+  linhas.className = 'historico';
+  for (const h of historico) {
+    const linha = document.createElement('li');
+    linha.textContent = `${h.quando} · ${h.texto} · ${h.quem}`;
+    linhas.append(linha);
+  }
+  caixa.append(resumo, linhas);
+  item.append(caixa);
+  return item;
+}
+
+/**
+ * Move o cartão pela função mover_cartao do banco: ela confere o WIP, muda a coluna e grava
+ * o movimento (origem, destino, data e hora, quem moveu e a justificativa), tudo junto.
+ * Serve para os botões ← → e para o Desfazer (história 3).
+ */
+async function moverCartao(cartao, paraColuna) {
+  if (!paraColuna) return;
+  // Desfazer pode apontar para uma coluna que foi arquivada depois: ela não está mais no board.
+  const destino = colunasAtuais.find((c) => c.id === paraColuna);
+  if (!destino) {
+    mostrarMensagem('A coluna de destino não existe neste board.');
+    return;
+  }
+  // História 4: se o destino está no limite de WIP, avisa e pede a justificativa antes de mover.
+  const quantidadeNoDestino = cartoesAtuais.filter((c) => c.coluna_id === paraColuna).length;
+  const { pode, justificativa } = pedirJustificativaSePreciso(destino, cartao.coluna_id, quantidadeNoDestino);
+  if (!pode) return; // cancelou ou deixou a justificativa vazia: o cartão fica onde está
+
+  const { error } = await supabase.rpc('mover_cartao', {
+    p_cartao: cartao.id, p_para_coluna: paraColuna, p_justificativa: justificativa,
+  });
+  if (error) {
+    mostrarMensagem(error.message); // a mensagem do banco já está em português (ex.: limite de WIP)
+    return;
+  }
+  // A passagem do limite aparece na hora na lista do Scrum Master.
+  await Promise.all([desenharColunas(), desenharPassagens()]);
+}
+
+/** Lista "Responsável" do formulário de cartão novo: ninguém ou um dos membros do board. */
+function preencherResponsaveis(perfis) {
+  const lista = $('#responsavel-novo');
+  const escolhido = lista.value;
+  const ninguem = document.createElement('option');
+  ninguem.value = '';
+  ninguem.textContent = 'Ninguém';
+  const opcoes = [...perfis]
+    .sort((x, y) => x.nome.localeCompare(y.nome, 'pt-BR'))
+    .map((p) => {
+      const opcao = document.createElement('option');
+      opcao.value = p.id;
+      opcao.textContent = p.nome;
+      return opcao;
+    });
+  lista.replaceChildren(ninguem, ...opcoes);
+  // Mantém a escolha se a pessoa ainda estiver na lista (o quadro é redesenhado a cada ação).
+  lista.value = opcoes.some((o) => o.value === escolhido) ? escolhido : '';
+}
+
+$('#form-cartao').addEventListener('submit', (evento) => {
+  evento.preventDefault();
+  acao(criarCartao);
+});
+
+/** Cria o cartão na primeira coluna do board. O gatilho registrar_criacao grava o 1º movimento. */
+async function criarCartao() {
+  const titulo = $('#titulo-cartao-novo').value;
+  const pontos = $('#pontos-cartao-novo').value;
+  const erros = validarCartao({ titulo, pontos });
+  if (erros.length > 0) {
+    mostrarMensagem(erros.join(' '));
+    return;
+  }
+  // Só os campos que o banco deixa mandar (grant insert): criado_em e criado_por vêm do banco.
+  const { error } = await supabase.from('cartoes').insert({
+    board_id: boardAtual.id,
+    coluna_id: colunasAtuais[0].id, // a primeira coluna (colunasAtuais já vem na ordem do board)
+    titulo: titulo.trim(),
+    pontos: pontos.trim() === '' ? null : Number(pontos),
+    responsavel_id: $('#responsavel-novo').value || null,
+  });
+  if (error) {
+    mostrarMensagem('Não foi possível criar o cartão.');
+    return;
+  }
+  $('#form-cartao').reset();
+  await desenharColunas();
 }
 
 async function renomearColuna(coluna) {
@@ -326,9 +562,8 @@ async function editarWipEPolitica(coluna) {
 
 /**
  * Antes de mover um cartão (história 4): se a coluna de destino está no limite de WIP, avisa e
- * pede a justificativa. Quem chama é o mover da história 3, que depois manda a justificativa para a
+ * pede a justificativa. Quem chama é o moverCartao (história 3), que depois manda a justificativa para a
  * mover_cartao (p_justificativa). O banco confere de novo, porque pode ter entrado outro cartão.
- * Ainda não é usada: será ligada ao botão de mover quando a história 3 entrar na main.
  * @param {{id: string, nome: string, limite_wip: number|null, politica: string|null}} destino
  * @param {string} deColunaId coluna onde o cartão está agora
  * @param {number} quantidadeNoDestino cartões que já estão no destino

@@ -149,6 +149,69 @@ A migração 001 marcou o `papel` pelo **nome** da coluna. Num board com duas co
 
 ---
 
+## 14 e 15/11/2026 · Kauan · Sprint 1 · merge da H1 e H2
+
+### O que foi feito
+1. **3ª conferência do PR #12 pela DoD** (`/revisar-dod`): os três itens da 2ª revisão estavam resolvidos. Os registros de uso da IA do Kauan ainda não estavam commitados; entraram no `98250c6`. **PR #12 aprovado e mesclado** (`8cfc8d5`) e o deploy no Pages passou. A issue #1 fechou.
+2. **H2 (#2) com TDD**, branch `historia-2-convite`, **PR #14**:
+   - Regras em `js/regras.js`: `normalizarCodigo` (igual ao `upper(trim())` do banco), `validarCodigoConvite` e `nomesDosMembros`. São 46 testes. Um deles confere que a mensagem "Código de convite inválido." é a mesma no `entrar_no_board` (regra 2).
+   - Tela: formulário "Entrar no board" em Meus boards; código de convite e "Membros (n)" na tela do board.
+   - Banco: `grant insert (nome)` em `boards`, para ninguém escolher o próprio código (pendência da revisão da H1). **Migração `002-convite.sql` já rodada no Supabase do time.**
+3. **Teste no navegador (headless, Chrome) com 3 contas fictícias**, no projeto do time. Passou: código visível, entrar por código (minúsculo e com espaços), lista de membros nos dois lados, entrar de novo sem duplicar, código vazio/errado/inexistente sem criar nada, e uma conta de fora chamando o banco direto sem ver nada (nem conseguir se inserir em `membros`). O teste achou **1 erro da IA**, corrigido: o `maxlength="6"` no campo cortava o código colado com espaço.
+
+### Cuidados
+- **O `js/config.js` do Kauan apontava para outro projeto do Supabase.** Nesse projeto, o usuário logado não lia nem `boards`. Foi trocado pelo projeto do time. Para conferir qual projeto está em uso, compare o começo da URL com o `js/config.js` do site publicado. A migração 002 pode ter rodado também nesse outro projeto; ele não é usado pelo time.
+- O teste no navegador usou o `playwright-core` instalado só na pasta temporária da sessão, com o Chrome do computador. O projeto não ganhou dependência nova.
+
+### Dados fictícios criados
+- No Supabase do time: contas `teste<número>a/b/c@teste.com` (Ana, Bia e Caio Teste) e boards "Board Convite Teste".
+- No outro projeto (`config.js` antigo): contas de teste e um board "Debug 2".
+
+Todos podem ser apagados.
+
+### Pendências
+1. **Paulo:** revisar o **PR #14 (H2)**. Depois do merge, conferir os critérios no site publicado.
+2. **PR #13 (automação do board):** ✅ mesclado (`3fcb976`).
+3. **H3 e H4:** sem branch, e a Sprint 1 termina em 17/11. O que não ficar pronto volta ao backlog.
+4. Trocar "_(link do GitHub Pages)_" no README por https://pauloav.github.io/ritmo/.
+5. A pendência 5 da sessão anterior está resolvida: a Sprint 1 já tem registros de uso da IA dos dois integrantes.
+
+---
+
+## 13 e 15/11/2026 · Paulo · Sprint 1 · fechamento do PR #12 e revisão do PR #14
+
+### O que foi feito
+1. **13/11:** depois do log da 2ª revisão (`2be3e74`), a revisão do PR #12 foi pedida de novo ao Kauan pelo GitHub (`gh pr edit --add-reviewer`). Ele aprovou e mesclou o #12 em 14/11 e também mesclou o #13.
+2. **15/11: revisão do PR #14 (H2, do Kauan) pela DoD** (`/revisar-dod`), publicada no PR **sem aprovar** (resumo + 3 comentários nas linhas):
+   - `npm test` na branch do PR: 46 testes passando; CI passou; sem conflito com a `main`.
+   - Os 4 critérios da issue #2 e a DoD estão atendidos. Não há bug que impeça o merge.
+   - Sugestões rápidas antes de aprovar:
+     - zerar o título "Membros (n)" ao abrir outro board (`js/app.js`), porque a contagem do anterior aparece por um instante;
+     - tirar do log a pendência "PR #13 sem revisão", porque o #13 já foi mesclado.
+   - Para a defesa:
+     - a regra da tela aceita `A-Z0-9`, mas o banco gera só hex;
+     - a `entrar_no_board` não limita tentativas (~16,7 milhões de códigos);
+     - o nome do perfil pode vir da parte do e-mail antes do `@`.
+3. **Registro de Uso da IA da revisão do #14** escrito. Ele inclui um erro da IA: ela disse que o link do README "pode já ter sido resolvido" pelo #13, mas o README da `main` ainda tem o texto provisório.
+
+### Decisão
+- O registro de IA e esta seção do log **não entram no PR #14**, para não mexer no PR do Kauan. Ficaram guardados no stash `registro-ia: revisao do PR #14 (Paulo, 15/11) - aplicar depois do merge do #14`, no computador do Paulo.
+
+### Estado ao fim da sessão
+- `main`: H1 (#12) e automação (#13) mescladas; o deploy no Pages funciona.
+- PR #14 (H2): revisado, esperando os ajustes do Kauan e a aprovação do Paulo.
+- H3 e H4 sem branch, e a Sprint 1 termina em 17/11.
+- Registros de IA da Sprint 1 contando este: 9 (5 do Paulo e 4 do Kauan), com erro da IA corrigido. A regra está cumprida.
+
+### Pendências
+1. **Kauan:** ajustar a contagem de membros e o log no PR #14. **Paulo:** conferir de novo e aprovar.
+2. **Depois do merge do #14:** criar a branch `registro-ia-revisao-h2` a partir da `main`, rodar `git stash pop`, fazer commit e abrir um PR curto só de documentação.
+3. Conferir os critérios da H2 no site publicado.
+4. Trocar "_(link do GitHub Pages)_" no README por https://pauloav.github.io/ritmo/.
+5. Começar a H3 o quanto antes. Ela vai testar a Action `board.yml` de verdade.
+
+---
+
 ## 15/11/2026 · Kauan · Sprint 1 · H4
 
 ### O que foi feito
@@ -173,3 +236,62 @@ A migração 001 marcou o `papel` pelo **nome** da coluna. Num board com duas co
 1. **Paulo:** revisar o PR da H4. Ele só fica completo depois da H3 (critério 2).
 2. **Kauan:** depois do merge da H3, ligar `pedirJustificativaSePreciso` ao mover e repetir o teste no navegador pela tela.
 3. Sprint 1 termina em 17/11: o que não ficar pronto volta ao backlog.
+
+---
+
+## 16 e 17/11/2026 · Paulo · Sprint 1 · merge da H2 e H3 (PR #15)
+
+### O que foi feito
+1. **PR #14 (H2):**
+   - o Kauan respondeu a revisão e corrigiu a contagem de membros e o log (`fee5414`);
+   - 3ª conferência pela DoD, com os testes rodados numa cópia do PR: 46 passando;
+   - PR aprovado e **mesclado** (`23caf21`), e a issue #2 fechou.
+2. **H3 (#3) com TDD**, na branch `historia-3-cartoes-movimentos`, enviada ao GitHub logo no começo (16/11, 00h14):
+   - regras com 18 testes novos: `validarCartao`, `colunaVizinha`, `formatarDataHora` (UTC → São Paulo), `montarHistorico` e `movimentoParaDesfazer`. Um deles é o teste da regra 2 com os checks de `cartoes`;
+   - tela com o formulário de cartão novo, os botões ← → e Desfazer (movimento novo) e o histórico só de leitura;
+   - **migração `003-cartoes.sql`, que o Paulo rodou no Supabase do time.** Ela fecha dois furos: o `criado_em` falso no insert do cartão, que deixava o Lead Time falso, e o responsável de fora do board.
+3. **Teste no navegador (headless)**, no computador e no celular:
+   - os 4 critérios passaram, e o banco recusou todas as tentativas de burlar o histórico;
+   - também foi visto funcionando o "coluna com cartões não pode ser excluída" da H1;
+   - os prints mostraram 3 problemas de CSS, corrigidos. Um deles vinha da H1: o hover deixava o texto dos botões roxos invisível.
+4. **Merge da `main` (H2) na H3** (`5c7d72b`):
+   - os conflitos em `index.html`, `regras.js` e nos testes foram resolvidos mantendo as duas histórias;
+   - no `app.js`, a lista de membros passou a usar os dados que a H3 já busca;
+   - um teste com duas contas confirmou a H2 e a H3 juntas. São 64 testes.
+5. **Board:** a Action falhou, e a issue #3 foi movida à mão para "Em andamento", com **Início 16/11** (a data do push).
+6. **PR #15 aberto**, com o Kauan como revisor e um comentário com os pontos de atenção. A issue #3 foi sozinha para "Em revisão".
+7. **Registro de Uso da IA** da H3 escrito.
+   - O registro da revisão do #14 e a seção do log de 13 e 15/11, que estavam no stash, entraram nesta branch.
+   - Não foi preciso uma branch de documentação separada.
+
+### Problemas encontrados
+- **A Action `board.yml` falha com `unknown owner type`**, na `historia-3-cartoes-movimentos` e na `historia-4-wip`.
+  - O mesmo comando funciona com o `gh` local, que tem os escopos `project`, `read:org` e `repo`.
+  - Suspeita, **não confirmada:** falta escopo no `PROJECT_TOKEN`. Gerar de novo com `project`, `read:org` e `repo` e testar na próxima branch `historia-N`.
+- **Resolver conflito por script é perigoso.** Ao inverter a ordem das duas partes, a chave que fechava a última função da H2, que era comum às duas, foi parar no fim do arquivo. O `node --check` e o Vitest pegaram o erro. **Depois de resolver um conflito, rodar `npm test` antes do commit.**
+- **Os arquivos ficam com CRLF no Windows** (`core.autocrlf=true`). Script que edita arquivo precisa manter o CRLF.
+- **O `npm run dev` "parado" por falta de memória continuou rodando** na porta 8080, e o servidor novo deu `EADDRINUSE`.
+
+### Dados fictícios criados (no Supabase do time)
+- Contas `teste<número>@teste.com` (Ana Teste e Bia Teste).
+- Boards "Board H3 Teste", "Board Visual Teste", "Board H2+H3 Teste" e "Board Sozinha Teste".
+
+Todos podem ser apagados.
+
+### Estado ao fim da sessão
+- **`main`:** H1, H2 e a automação do board. A H2 está no deploy do Pages.
+- **PR #15 (H3):** em revisão com o Kauan. O CI passou, e o PR pode ser mesclado sem conflito.
+- **H4:** branch `historia-4-wip` do Kauan. A issue #4 continua em "Sprint Backlog" no board, porque a Action falhou.
+- **A Sprint 1 termina hoje (17/11).**
+- **Registros de IA da Sprint 1:** 10 (6 do Paulo e 4 do Kauan), com vários erros da IA corrigidos.
+
+### Pendências
+1. **Kauan:** revisar e mesclar o PR #15 hoje, para a H3 entrar na Sprint 1.
+2. **Kauan:**
+   - mover a issue #4 à mão para "Em andamento", com o Início da data em que a branch foi enviada;
+   - atualizar a `historia-4-wip` com a `main` depois do #15. Deve dar conflito em `moverCartao` (`js/app.js`).
+3. **Paulo:** gerar de novo o `PROJECT_TOKEN` com `read:org` e `repo` e trocar o secret.
+4. **Depois dos merges:** conferir a H2 e a H3 no Pages e trocar o link no README.
+5. **Fim da Sprint 1:** métricas (skill `/metricas-sprint`), Sprint Review e Retrospectiva. O que não ficar pronto volta ao backlog.
+6. **Backlog:** "arrastar com o mouse" e "editar cartão" ficaram fora da H3. Decidir com o PO se viram itens novos.
+7. **Pequenos:** encerrar o `node` antigo na porta 8080, se ainda estiver rodando; ver se o 404 do carregamento é mesmo o `favicon.ico`.

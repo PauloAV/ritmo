@@ -2,9 +2,11 @@ import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import {
   COLUNAS_PADRAO, situacaoWip, validarMovimento,
-  lerLimiteWip, lerPolitica, formatarDataHora, passagensDeWip,
+  lerLimiteWip, lerPolitica, passagensDeWip,
   validarCredenciais, validarCadastro, traduzirErroAuth, validarNome,
   moverColunaNaOrdem, podeArquivarColuna, proximaPosicao, colunasQueMudaram,
+  normalizarCodigo, validarCodigoConvite, nomesDosMembros,
+  validarCartao, colunaVizinha, formatarDataHora, montarHistorico, movimentoParaDesfazer,
 } from '../js/regras.js';
 
 // Dados fictícios: nada de nome, e-mail ou dado real nos testes.
@@ -124,7 +126,7 @@ describe('lerPolitica', () => {
   });
 });
 
-describe('formatarDataHora', () => {
+describe('formatarDataHora (exemplos da H4)', () => {
   // Guardado em UTC; São Paulo é UTC-3 (sem horário de verão desde 2019). Conta feita à mão:
   it('converte de UTC para o horário de São Paulo', () => {
     expect(formatarDataHora('2026-11-15T17:30:00Z')).toBe('15/11/2026 14:30');
@@ -342,5 +344,206 @@ describe('podeArquivarColuna', () => {
     // No banco, o número vem por %: 'A coluna tem % cartão(ões). Mova os cartões antes de excluir.'
     const comCartoes = podeArquivarColuna({ quantidadeCartoes: 7, papel: null })[0];
     expect(sql).toContain(comCartoes.replace('7', '%'));
+  });
+});
+
+// ---------- História 2: convite por código ----------
+
+describe('normalizarCodigo', () => {
+  // Mesmo tratamento do entrar_no_board no banco: upper(trim(p_codigo)).
+  it('tira os espaços das pontas e põe em maiúsculas', () => {
+    expect(normalizarCodigo('  ab12cd ')).toBe('AB12CD');
+  });
+
+  it('trata campo vazio ou ausente como texto vazio', () => {
+    expect(normalizarCodigo('   ')).toBe('');
+    expect(normalizarCodigo(undefined)).toBe('');
+  });
+});
+
+describe('validarCodigoConvite', () => {
+  it('aceita 6 letras ou números, mesmo digitados com espaço e minúsculas', () => {
+    expect(validarCodigoConvite('AB12CD')).toEqual([]);
+    expect(validarCodigoConvite(' ab12cd ')).toEqual([]);
+  });
+
+  it('pede o código quando o campo está vazio', () => {
+    expect(validarCodigoConvite('  ')).toEqual(['Digite o código de convite.']);
+  });
+
+  it('recusa código com tamanho errado ou com símbolo, sem precisar ir ao banco', () => {
+    expect(validarCodigoConvite('AB12C')).toEqual(['Código de convite inválido.']);
+    expect(validarCodigoConvite('AB12CDE')).toEqual(['Código de convite inválido.']);
+    expect(validarCodigoConvite('AB-12C')).toEqual(['Código de convite inválido.']);
+  });
+
+  // Regra 2: o banco (entrar_no_board) dá a mesma mensagem para código que não existe.
+  it('usa a mesma mensagem de código inválido que o entrar_no_board do schema.sql', () => {
+    const sql = readFileSync(new URL('../supabase/schema.sql', import.meta.url), 'utf8');
+    expect(sql).toContain(`'${validarCodigoConvite('X')[0]}'`);
+  });
+});
+
+describe('nomesDosMembros', () => {
+  // Pessoas fictícias. As datas estão em UTC, como o banco guarda (entrou_em é timestamptz).
+  const perfis = [
+    { id: 'u-bia', nome: 'Bia Teste' },
+    { id: 'u-ana', nome: 'Ana Teste' },
+    { id: 'u-caio', nome: 'Caio Teste' },
+  ];
+
+  it('devolve os nomes na ordem em que cada um entrou no board', () => {
+    const membros = [
+      { usuario_id: 'u-bia', entrou_em: '2026-11-14T15:00:00+00:00' },
+      { usuario_id: 'u-ana', entrou_em: '2026-11-10T09:30:00+00:00' },
+      { usuario_id: 'u-caio', entrou_em: '2026-11-14T15:05:00+00:00' },
+    ];
+    expect(nomesDosMembros(membros, perfis)).toEqual(['Ana Teste', 'Bia Teste', 'Caio Teste']);
+  });
+
+  it('mostra "Membro sem nome" quando não acha o perfil, em vez de sumir com a pessoa', () => {
+    const membros = [{ usuario_id: 'u-sem-perfil', entrou_em: '2026-11-14T15:00:00+00:00' }];
+    expect(nomesDosMembros(membros, perfis)).toEqual(['Membro sem nome']);
+  });
+});
+
+// ---------- História 3: cartões com histórico de movimentos ----------
+
+describe('validarCartao', () => {
+  // Mesmas regras dos checks da tabela cartoes: título com texto; pontos vazio ou inteiro >= 0.
+  it('aceita só o título (responsável e pontos são opcionais)', () => {
+    expect(validarCartao({ titulo: 'Tela de login', pontos: '' })).toEqual([]);
+  });
+
+  it('aceita pontos inteiros a partir de zero, digitados com espaço', () => {
+    expect(validarCartao({ titulo: 'Tela de login', pontos: ' 3 ' })).toEqual([]);
+    expect(validarCartao({ titulo: 'Tela de login', pontos: '0' })).toEqual([]);
+  });
+
+  it('pede o título quando ele está vazio ou só com espaços', () => {
+    expect(validarCartao({ titulo: '   ', pontos: '' })).toEqual(['O título do cartão é obrigatório.']);
+  });
+
+  it('recusa pontos negativos, com vírgula ou com letras', () => {
+    const erro = ['Os pontos precisam ser um número inteiro, de 0 para cima.'];
+    expect(validarCartao({ titulo: 'Tela de login', pontos: '-1' })).toEqual(erro);
+    expect(validarCartao({ titulo: 'Tela de login', pontos: '2,5' })).toEqual(erro);
+    expect(validarCartao({ titulo: 'Tela de login', pontos: 'três' })).toEqual(erro);
+  });
+
+  it('junta os dois erros quando título e pontos estão errados', () => {
+    expect(validarCartao({ titulo: '', pontos: 'x' })).toHaveLength(2);
+  });
+});
+
+describe('colunaVizinha', () => {
+  // Fora de ordem de propósito, e com uma coluna arquivada no meio (posição 3).
+  const colunas = [
+    { id: 'c-feito', posicao: 5, arquivada: false },
+    { id: 'c-a', posicao: 1, arquivada: false },
+    { id: 'c-velha', posicao: 3, arquivada: true },
+    { id: 'c-b', posicao: 2, arquivada: false },
+    { id: 'c-c', posicao: 4, arquivada: false },
+  ];
+
+  it('acha a coluna da direita (+1) e da esquerda (-1) pela posição', () => {
+    expect(colunaVizinha(colunas, 'c-a', 1)).toBe('c-b');
+    expect(colunaVizinha(colunas, 'c-feito', -1)).toBe('c-c');
+  });
+
+  it('pula a coluna arquivada', () => {
+    expect(colunaVizinha(colunas, 'c-b', 1)).toBe('c-c');
+    expect(colunaVizinha(colunas, 'c-c', -1)).toBe('c-b');
+  });
+
+  it('devolve null nas pontas do board', () => {
+    expect(colunaVizinha(colunas, 'c-a', -1)).toBeNull();
+    expect(colunaVizinha(colunas, 'c-feito', 1)).toBeNull();
+  });
+});
+
+describe('formatarDataHora', () => {
+  // Conta feita à mão: São Paulo está em UTC-3 (sem horário de verão desde 2019).
+  it('converte de UTC para o horário de São Paulo (3 horas a menos)', () => {
+    expect(formatarDataHora('2026-11-16T15:03:00Z')).toBe('16/11/2026 12:03');
+  });
+
+  it('volta para o dia anterior quando, em UTC, já passou da meia-noite', () => {
+    // 01:30 de 17/11 em UTC = 22:30 de 16/11 em São Paulo
+    expect(formatarDataHora('2026-11-17T01:30:00+00:00')).toBe('16/11/2026 22:30');
+  });
+
+  it('entende o formato que o Supabase devolve (com fração de segundo)', () => {
+    expect(formatarDataHora('2026-11-16T09:05:41.123456+00:00')).toBe('16/11/2026 06:05');
+  });
+});
+
+// Um cartão fictício que foi criado no Backlog, foi para Em andamento e voltou (desfazer).
+// Os movimentos vêm fora de ordem de propósito; as datas estão em UTC, como no banco.
+const colunasDoBoard = [
+  { id: 'c-backlog', nome: 'Backlog' },
+  { id: 'c-andamento', nome: 'Em andamento' },
+  { id: 'c-velha', nome: 'Coluna arquivada', arquivada: true },
+];
+const pessoas = [{ id: 'u-ana', nome: 'Ana Teste' }, { id: 'u-bia', nome: 'Bia Teste' }];
+const movimentosDoCartao = [
+  { id: 12, de_coluna_id: 'c-andamento', para_coluna_id: 'c-backlog', movido_por: 'u-bia',
+    movido_em: '2026-11-16T18:00:00+00:00', justificativa: null },
+  { id: 10, de_coluna_id: null, para_coluna_id: 'c-backlog', movido_por: 'u-ana',
+    movido_em: '2026-11-16T12:00:00+00:00', justificativa: null },
+  { id: 11, de_coluna_id: 'c-backlog', para_coluna_id: 'c-andamento', movido_por: 'u-ana',
+    movido_em: '2026-11-16T15:30:00+00:00', justificativa: null },
+];
+
+describe('montarHistorico', () => {
+  it('lista do mais antigo para o mais novo, com hora de São Paulo, quem moveu e de onde para onde', () => {
+    expect(montarHistorico(movimentosDoCartao, colunasDoBoard, pessoas)).toEqual([
+      { quando: '16/11/2026 09:00', quem: 'Ana Teste', texto: 'Criado em Backlog' },
+      { quando: '16/11/2026 12:30', quem: 'Ana Teste', texto: 'Backlog → Em andamento' },
+      { quando: '16/11/2026 15:00', quem: 'Bia Teste', texto: 'Em andamento → Backlog' },
+    ]);
+  });
+
+  it('desempata pelo número do movimento quando a hora é a mesma', () => {
+    const mesmaHora = movimentosDoCartao.map((m) => ({ ...m, movido_em: '2026-11-16T12:00:00Z' }));
+    expect(montarHistorico(mesmaHora, colunasDoBoard, pessoas).map((h) => h.texto))
+      .toEqual(['Criado em Backlog', 'Backlog → Em andamento', 'Em andamento → Backlog']);
+  });
+
+  it('mostra coluna arquivada pelo nome e não esconde quem não tem perfil', () => {
+    const mov = [{ id: 1, de_coluna_id: 'c-velha', para_coluna_id: 'c-backlog', movido_por: 'u-x',
+      movido_em: '2026-11-16T12:00:00Z', justificativa: null }];
+    expect(montarHistorico(mov, colunasDoBoard, pessoas)).toEqual([
+      { quando: '16/11/2026 09:00', quem: 'Membro sem nome', texto: 'Coluna arquivada → Backlog' },
+    ]);
+  });
+
+  it('não muda a lista que recebeu', () => {
+    const copia = structuredClone(movimentosDoCartao);
+    montarHistorico(movimentosDoCartao, colunasDoBoard, pessoas);
+    expect(movimentosDoCartao).toEqual(copia);
+  });
+});
+
+describe('movimentoParaDesfazer', () => {
+  // Desfazer não apaga nada: é um movimento NOVO de volta para a coluna de onde o cartão veio.
+  it('devolve a coluna de origem do último movimento', () => {
+    const ateIda = movimentosDoCartao.filter((m) => m.id <= 11);
+    expect(movimentoParaDesfazer(ateIda)).toBe('c-backlog');
+    expect(movimentoParaDesfazer(movimentosDoCartao)).toBe('c-andamento'); // desfazer o desfazer
+  });
+
+  it('não tem o que desfazer quando o cartão acabou de ser criado', () => {
+    expect(movimentoParaDesfazer(movimentosDoCartao.filter((m) => m.id === 10))).toBeNull();
+    expect(movimentoParaDesfazer([])).toBeNull();
+  });
+});
+
+// Regra 2: validarCartao espelha os checks da tabela cartoes. Se um lado mudar, este teste avisa.
+describe('validarCartao × schema.sql', () => {
+  it('o banco tem os mesmos checks de título e pontos', () => {
+    const sql = readFileSync(new URL('../supabase/schema.sql', import.meta.url), 'utf8');
+    expect(sql).toContain('titulo         text not null check (length(trim(titulo)) > 0)');
+    expect(sql).toContain('pontos         integer check (pontos is null or pontos >= 0)');
   });
 });
