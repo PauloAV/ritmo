@@ -90,6 +90,28 @@
         </label>
         <button type="submit">Adicionar coluna</button>
       </form>
+      <!-- História 5: Lead Time, Cycle Time e Throughput (contas em metricasDoFluxo, regras.js) -->
+      <section class="metricas" aria-labelledby="titulo-metricas">
+        <h3 id="titulo-metricas">Métricas do fluxo</h3>
+        <p class="definicoes">
+          <strong>Lead Time</strong>: da criação do cartão até a entrada em Concluído.
+          <strong>Cycle Time</strong>: da primeira entrada em Em andamento até Concluído.
+          <strong>Throughput</strong>: cartões concluídos por semana.
+          Entram os cartões concluídos no período. Valem as colunas marcadas como início e fim do fluxo,
+          mesmo que o time mude o nome delas.
+        </p>
+        <div class="formulario em-linha">
+          <label>De <input id="metricas-de" type="date"></label>
+          <label>Até <input id="metricas-ate" type="date"></label>
+        </div>
+        <p id="resumo-metricas" class="resumo-metricas" aria-live="polite"></p>
+        <div class="tabela-rolavel">
+          <table id="tabela-metricas" aria-label="Lead Time e Cycle Time de cada cartão concluído"></table>
+        </div>
+        <div class="tabela-rolavel">
+          <table id="tabela-throughput" aria-label="Throughput por semana"></table>
+        </div>
+      </section>
       <section class="passagens" aria-labelledby="titulo-passagens">
         <h3 id="titulo-passagens">Passagens do limite de WIP (para o Scrum Master)</h3>
         <ul id="lista-passagens" class="lista-passagens"></ul>

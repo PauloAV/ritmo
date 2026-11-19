@@ -2,6 +2,7 @@
 // História 2: código de convite, entrar no board por código e lista de membros.
 // História 3: cartões, mover entre colunas (botões ← →), desfazer e histórico de movimentos.
 // História 4: limite de WIP e política por coluna, justificativa ao passar do limite e lista para o SM.
+// História 5: Lead Time, Cycle Time e Throughput do período escolhido, com o valor de cada cartão.
 // Segurança: texto digitado pelo usuário entra na página só por textContent (nunca innerHTML),
 // para ninguém conseguir injetar HTML ou script pelo nome de um board ou coluna.
 import { supabase } from './supabase.js';
@@ -11,6 +12,7 @@ import {
   validarNome, moverColunaNaOrdem, podeArquivarColuna, proximaPosicao, colunasQueMudaram,
   normalizarCodigo, validarCodigoConvite, nomesDosMembros,
   validarCartao, colunaVizinha, montarHistorico, movimentoParaDesfazer,
+  metricasDoFluxo, formatarDias, formatarDataHora, periodoPadrao,
 } from './regras.js';
 
 // Campos do board que as telas usam (o código de convite aparece no board, história 2).
@@ -238,6 +240,8 @@ async function entrarComCodigo() {
 let boardAtual = null;
 let colunasAtuais = []; // só as ativas (sem as arquivadas), na ordem do board
 let cartoesAtuais = []; // cartões do board, para contar quantos há no destino (WIP, história 4)
+// Dados que as métricas usam (história 5): os mesmos que o quadro acabou de buscar, sem nova busca.
+let dadosDoFluxo = { cartoes: [], movimentos: [], colunas: [] };
 
 async function abrirBoard(board) {
   boardAtual = board;
@@ -289,9 +293,11 @@ async function desenharColunas() {
   // Movimentos e perfis dependem dos ids que acabaram de chegar, por isso vêm numa segunda busca.
   // (membros e perfis ligam em auth.users, não uma na outra, por isso não dá para buscar juntos.)
   const [movimentos, perfis] = await Promise.all([
+    // movimentos não tem board_id: o cartoes!inner junta o cartão e filtra pelo board dele.
+    // (Antes era .in() com a lista de ids dos cartões, que cresce com o board; revisão do PR #15.)
     supabase.from('movimentos')
-      .select('id, cartao_id, de_coluna_id, para_coluna_id, movido_por, movido_em')
-      .in('cartao_id', cartoes.data.map((c) => c.id)),
+      .select('id, cartao_id, de_coluna_id, para_coluna_id, movido_por, movido_em, cartoes!inner(board_id)')
+      .eq('cartoes.board_id', boardAtual.id),
     supabase.from('perfis').select('id, nome').in('id', membros.data.map((m) => m.usuario_id)),
   ]);
   if (movimentos.error || perfis.error) {
@@ -301,6 +307,8 @@ async function desenharColunas() {
 
   colunasAtuais = colunas.data.filter((c) => !c.arquivada);
   cartoesAtuais = cartoes.data;
+  dadosDoFluxo = { cartoes: cartoes.data, movimentos: movimentos.data, colunas: colunas.data };
+  desenharMetricas(); // a cada movimento, as métricas acompanham
   desenharMembros(membros.data, perfis.data);
   preencherResponsaveis(perfis.data);
   const cartoesNa = (idColuna) => cartoes.data.filter((c) => c.coluna_id === idColuna);
@@ -684,6 +692,71 @@ async function criarColuna() {
   }
   $('#form-coluna').reset();
   await desenharColunas();
+}
+
+// ---------- Métricas do fluxo (história 5) ----------
+// As contas estão em metricasDoFluxo (regras.js), com as definições e os testes.
+// Aqui só lemos o período escolhido e desenhamos as tabelas. Não há busca nova no banco:
+// os dados são os que o quadro acabou de buscar (dadosDoFluxo).
+
+// Ao abrir a página, o período são as últimas 4 semanas (periodoPadrao).
+{
+  const { de, ate } = periodoPadrao(new Date().toISOString());
+  $('#metricas-de').value = de;
+  $('#metricas-ate').value = ate;
+}
+$('#metricas-de').addEventListener('change', desenharMetricas);
+$('#metricas-ate').addEventListener('change', desenharMetricas);
+
+/** Desenha médias, o valor de cada cartão e o throughput por semana do período escolhido. */
+function desenharMetricas() {
+  const de = $('#metricas-de').value;
+  const ate = $('#metricas-ate').value;
+  const resumo = $('#resumo-metricas');
+  if (!de || !ate || de > ate) {
+    resumo.textContent = 'Escolha um período válido: a data inicial não pode ser depois da final.';
+    $('#tabela-metricas').replaceChildren();
+    $('#tabela-throughput').replaceChildren();
+    return;
+  }
+
+  const r = metricasDoFluxo({ ...dadosDoFluxo, de, ate });
+  resumo.textContent = `${r.cartoes.length} cartão(ões) concluído(s) no período · `
+    + `Lead Time médio: ${formatarDias(r.leadTimeMedio)} dias · `
+    + `Cycle Time médio: ${formatarDias(r.cycleTimeMedio)} dias · `
+    // Throughput com até 2 casas: 1 cartão em 4 semanas aparece 0,25 (e não 0,3), como na conta à mão.
+    + `Throughput médio: ${r.throughputMedio.toLocaleString('pt-BR', { maximumFractionDigits: 2 })} por semana`;
+
+  // Valor de cada cartão, para conferir a conta (critério 3).
+  $('#tabela-metricas').replaceChildren(
+    linhaDeTabela('th', ['Cartão', 'Criado', 'Início', 'Concluído', 'Lead Time (dias)', 'Cycle Time (dias)']),
+    ...r.cartoes.map((c) => linhaDeTabela('td', [
+      c.titulo, formatarDataHora(c.criadoEm), c.inicioEm ? formatarDataHora(c.inicioEm) : '—',
+      formatarDataHora(c.fimEm), formatarDias(c.leadTime), formatarDias(c.cycleTime),
+    ])),
+  );
+  // Uma linha por semana (segunda a domingo), inclusive as semanas sem nenhum concluído.
+  $('#tabela-throughput').replaceChildren(
+    linhaDeTabela('th', ['Semana (segunda a domingo)', 'Concluídos']),
+    ...r.throughput.map((s) => linhaDeTabela('td', [`a partir de ${diaCurto(s.semana)}`, String(s.concluidos)])),
+  );
+}
+
+/** "2026-11-16" → "16/11/2026". */
+function diaCurto(dia) {
+  return `${dia.slice(8, 10)}/${dia.slice(5, 7)}/${dia.slice(0, 4)}`;
+}
+
+/** Uma linha de tabela com células th (cabeçalho) ou td. textContent: o título é texto do usuário. */
+function linhaDeTabela(tipo, textos) {
+  const linha = document.createElement('tr');
+  linha.append(...textos.map((texto) => {
+    const celula = document.createElement(tipo);
+    if (tipo === 'th') celula.scope = 'col';
+    celula.textContent = texto;
+    return celula;
+  }));
+  return linha;
 }
 
 // ---------- Início ----------
