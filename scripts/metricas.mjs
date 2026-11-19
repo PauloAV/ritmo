@@ -81,7 +81,8 @@ const cfd = diasDaSprint.map((dia) => {
   const linha = { dia: curto(dia) };
   for (const c of COLUNAS) linha[c] = 0;
   for (const h of historias) {
-    const ate = h.status.filter((s) => diaSP(s.em) <= dia);
+    // Ordena por data antes: se a API devolver em outra ordem, o "último" continua certo.
+    const ate = [...h.status].sort((a, b) => a.em.localeCompare(b.em)).filter((s) => diaSP(s.em) <= dia);
     if (ate.length > 0) linha[ate.at(-1).coluna] += 1;
   }
   return linha;
@@ -185,8 +186,13 @@ const svgCfd = moldura(
       const empatados = espessura.map((e, i) => (e === maior ? i : -1)).filter((i) => i >= 0);
       const melhor = empatados[Math.floor((empatados.length - 1) / 2)];
       const meio = (topo[melhor] + base[melhor]) / 2;
-      camadas.push(texto(Math.min(xDe(melhor), xDe(ultimo) - 4) + (melhor === ultimo ? 10 : 0), yDe(meio) + 4,
-        coluna, `fill="${COR.texto}" font-size="11" ${melhor === ultimo ? '' : 'text-anchor="middle"'} paint-order="stroke" stroke="${COR.fundo}" stroke-width="3"`));
+      // No último dia, o texto vai para a direita da área (começa logo depois dela);
+      // nos outros dias, fica centralizado em cima do dia escolhido.
+      const noUltimoDia = melhor === ultimo;
+      const xRotulo = noUltimoDia ? xDe(ultimo) + 6 : xDe(melhor);
+      const ancora = noUltimoDia ? 'start' : 'middle';
+      camadas.push(texto(xRotulo, yDe(meio) + 4, coluna,
+        `fill="${COR.texto}" font-size="11" text-anchor="${ancora}" paint-order="stroke" stroke="${COR.fundo}" stroke-width="3"`));
       topo.forEach((v, i) => { base[i] = v; });
     }
     return camadas.join('\n');

@@ -357,8 +357,8 @@ Contas `teste<número>h4@teste.com` (Ana Teste), boards "Board H4 Teste" e cart�
    - Pelo log, a H1 começou em 11/11, e o board diz 12/11.
    - O código da H2 começou em 14/11, e o board diz 12/11.
    - Se mudar, coletar os dados de novo e rodar `node scripts/metricas.mjs docs/metricas/sprint-1.json`.
-2. **Commit e PR da branch `metricas-sprint-1`**, com as métricas, este log e o registro de IA.
-3. Conferir H2, H3 e H4 no Pages e trocar o link provisório do README.
+2. ✅ Commit e PR da branch `metricas-sprint-1`: é o PR #17.
+3. Conferir H2, H3 e H4 no Pages. (O link do README já foi trocado pelo Kauan, no `a34c867`.)
 4. **Sprint Review e Retrospectiva da Sprint 1.**
 5. **Sprint 2, a partir das sugestões dos PRs #15 e #16:**
    - teste da regra 2 para a mensagem de WIP;
