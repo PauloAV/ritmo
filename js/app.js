@@ -3,6 +3,7 @@
 // História 3: cartões, mover entre colunas (botões ← →), desfazer e histórico de movimentos.
 // História 4: limite de WIP e política por coluna, justificativa ao passar do limite e lista para o SM.
 // História 5: Lead Time, Cycle Time e Throughput do período escolhido, com o valor de cada cartão.
+// História 6: Sprints (datas e cartões escolhidos) e o burndown de cada uma, em SVG feito à mão.
 // Segurança: texto digitado pelo usuário entra na página só por textContent (nunca innerHTML),
 // para ninguém conseguir injetar HTML ou script pelo nome de um board ou coluna.
 import { supabase } from './supabase.js';
@@ -13,6 +14,7 @@ import {
   normalizarCodigo, validarCodigoConvite, nomesDosMembros,
   validarCartao, colunaVizinha, montarHistorico, movimentoParaDesfazer,
   metricasDoFluxo, formatarDias, formatarDataHora, periodoPadrao,
+  validarSprint, burndown, diaEmSaoPaulo,
 } from './regras.js';
 
 // Campos do board que as telas usam (o código de convite aparece no board, história 2).
@@ -242,6 +244,9 @@ let colunasAtuais = []; // só as ativas (sem as arquivadas), na ordem do board
 let cartoesAtuais = []; // cartões do board, para contar quantos há no destino (WIP, história 4)
 // Dados que as métricas usam (história 5): os mesmos que o quadro acabou de buscar, sem nova busca.
 let dadosDoFluxo = { cartoes: [], movimentos: [], colunas: [] };
+// Sprints do board aberto (história 6) e as ligações sprint_cartoes ({ sprint_id, cartao_id }).
+let sprintsDoBoard = [];
+let cartoesDasSprints = [];
 
 async function abrirBoard(board) {
   boardAtual = board;
@@ -251,8 +256,13 @@ async function abrirBoard(board) {
   $('#lista-membros').replaceChildren(); // apaga os membros do board anterior
   $('#titulo-membros').textContent = 'Membros'; // e a contagem antiga também (revisão do Paulo)
   $('#lista-passagens').replaceChildren(); // apaga as passagens do board anterior
+  // Sprints e dados do board anterior não podem aparecer no novo (história 6).
+  dadosDoFluxo = { cartoes: [], movimentos: [], colunas: [] };
+  sprintsDoBoard = [];
+  cartoesDasSprints = [];
+  $('#sprint-escolhida').replaceChildren();
   // desenharColunas desenha também a lista de membros (desenharMembros).
-  await Promise.all([desenharColunas(), desenharPassagens()]);
+  await Promise.all([desenharColunas(), desenharPassagens(), carregarSprints()]);
 }
 
 /**
@@ -309,6 +319,8 @@ async function desenharColunas() {
   cartoesAtuais = cartoes.data;
   dadosDoFluxo = { cartoes: cartoes.data, movimentos: movimentos.data, colunas: colunas.data };
   desenharMetricas(); // a cada movimento, as métricas acompanham
+  preencherCartoesParaSprint(); // cartão novo já aparece para escolher na Sprint
+  desenharBurndown(); // e o burndown também acompanha cada movimento
   desenharMembros(membros.data, perfis.data);
   preencherResponsaveis(perfis.data);
   const cartoesNa = (idColuna) => cartoes.data.filter((c) => c.coluna_id === idColuna);
@@ -757,6 +769,201 @@ function linhaDeTabela(tipo, textos) {
     return celula;
   }));
   return linha;
+}
+
+// ---------- Burndown da Sprint (história 6) ----------
+// A conta está em burndown (regras.js), com a definição e o teste do exemplo feito à mão.
+// Aqui: buscar as Sprints, criar uma nova, escolher qual mostrar e desenhar gráfico e tabela.
+// Movimentos e cartões vêm de dadosDoFluxo (o que o quadro acabou de buscar): sem busca nova.
+
+/** Busca as Sprints do board e os cartões de cada uma. escolher = id da Sprint para deixar selecionada. */
+async function carregarSprints(escolher) {
+  const [sprints, ligacoes] = await Promise.all([
+    supabase.from('sprints').select('id, nome, inicio, fim')
+      .eq('board_id', boardAtual.id).order('inicio', { ascending: false }), // a mais recente primeiro
+    supabase.from('sprint_cartoes').select('sprint_id, cartao_id').eq('board_id', boardAtual.id),
+  ]);
+  if (sprints.error || ligacoes.error) {
+    mostrarMensagem('Não foi possível carregar as Sprints.');
+    return;
+  }
+  sprintsDoBoard = sprints.data;
+  cartoesDasSprints = ligacoes.data;
+
+  const lista = $('#sprint-escolhida');
+  const antes = escolher ?? lista.value; // mantém a Sprint que estava escolhida
+  lista.replaceChildren(...sprintsDoBoard.map((s) => {
+    const opcao = document.createElement('option');
+    opcao.value = s.id;
+    opcao.textContent = `${s.nome} (${diaCurto(s.inicio)} a ${diaCurto(s.fim)})`; // nome é texto do usuário
+    return opcao;
+  }));
+  if (sprintsDoBoard.some((s) => s.id === antes)) lista.value = antes;
+  desenharBurndown();
+}
+
+$('#sprint-escolhida').addEventListener('change', desenharBurndown);
+
+/** Caixinhas com os cartões do board, para escolher os da Sprint nova. Mantém o que já foi marcado. */
+function preencherCartoesParaSprint() {
+  const caixa = $('#cartoes-para-sprint');
+  const marcados = new Set([...caixa.querySelectorAll('input:checked')].map((i) => i.value));
+  caixa.replaceChildren(...cartoesAtuais.map((cartao) => {
+    const rotulo = document.createElement('label');
+    const caixinha = document.createElement('input');
+    caixinha.type = 'checkbox';
+    caixinha.value = cartao.id;
+    caixinha.checked = marcados.has(cartao.id);
+    const pontos = cartao.pontos === null ? 'sem pontos' : `${cartao.pontos} pt`;
+    rotulo.append(caixinha, `${cartao.titulo} (${pontos})`); // texto puro, nunca vira HTML
+    return rotulo;
+  }));
+}
+
+$('#form-sprint').addEventListener('submit', (evento) => {
+  evento.preventDefault();
+  acao(criarSprint);
+});
+
+/** Cria a Sprint com os cartões marcados. A criar_sprint grava tudo numa transação só. */
+async function criarSprint() {
+  const nome = $('#nome-sprint').value;
+  const inicio = $('#inicio-sprint').value;
+  const fim = $('#fim-sprint').value;
+  const cartoes = [...$('#cartoes-para-sprint').querySelectorAll('input:checked')].map((i) => i.value);
+  const erros = validarSprint({ nome, inicio, fim, cartoes });
+  if (erros.length > 0) {
+    mostrarMensagem(erros.join(' '));
+    return;
+  }
+  const { data: idNova, error } = await supabase.rpc('criar_sprint', {
+    p_board: boardAtual.id, p_nome: nome.trim(), p_inicio: inicio, p_fim: fim, p_cartoes: cartoes,
+  });
+  if (error) {
+    mostrarMensagem('Não foi possível criar a Sprint.');
+    return;
+  }
+  $('#form-sprint').reset(); // limpa o nome, as datas e as caixinhas
+  await carregarSprints(idNova); // já mostra o burndown da Sprint nova
+}
+
+/** Número para a tela, com vírgula e até uma casa: 7.5 → "7,5"; 10 → "10". */
+function numero(valor) {
+  return valor.toLocaleString('pt-BR', { maximumFractionDigits: 1 });
+}
+
+/** Desenha o resumo, o aviso de cartões sem pontos, o gráfico e a tabela da Sprint escolhida. */
+function desenharBurndown() {
+  const resumo = $('#resumo-burndown');
+  const aviso = $('#aviso-sem-pontos');
+  const sprint = sprintsDoBoard.find((s) => s.id === $('#sprint-escolhida').value);
+  if (!sprint) {
+    resumo.textContent = 'Nenhuma Sprint criada ainda. Crie uma acima, com as datas e os cartões.';
+    aviso.textContent = '';
+    $('#grafico-burndown').replaceChildren();
+    $('#tabela-burndown').replaceChildren();
+    return;
+  }
+
+  const idsDaSprint = new Set(cartoesDasSprints.filter((l) => l.sprint_id === sprint.id).map((l) => l.cartao_id));
+  const r = burndown({
+    ...dadosDoFluxo,
+    cartoes: dadosDoFluxo.cartoes.filter((c) => idsDaSprint.has(c.id)),
+    inicio: sprint.inicio,
+    fim: sprint.fim,
+    hoje: diaEmSaoPaulo(new Date().toISOString()), // dias depois de hoje ainda não têm valor real
+  });
+
+  const ultimoDia = r.dias.filter((d) => d.real !== null).at(-1);
+  resumo.textContent = `${idsDaSprint.size} cartão(ões) · ${r.total} pontos planejados · `
+    + (ultimoDia ? `faltam ${ultimoDia.real} pontos em ${diaCurto(ultimoDia.dia)}`
+      : 'a Sprint ainda não começou');
+  // Critério 4: cartão sem pontos conta 0 no gráfico, por isso o time precisa ver e estimar.
+  aviso.textContent = r.semPontos.length === 0 ? ''
+    : `⚠ Cartões sem pontos (contam 0 no burndown; estimem): ${r.semPontos.map((c) => c.titulo).join(', ')}.`;
+
+  $('#grafico-burndown').replaceChildren(graficoBurndown(r));
+  // A tabela tem os mesmos números do gráfico, para conferir a conta (e para leitor de tela).
+  $('#tabela-burndown').replaceChildren(
+    linhaDeTabela('th', ['Dia', 'Ideal (pontos)', 'Real (pontos)']),
+    ...r.dias.map((d) => linhaDeTabela('td', [diaCurto(d.dia), numero(d.ideal), d.real === null ? '—' : String(d.real)])),
+  );
+}
+
+const SVG = 'http://www.w3.org/2000/svg';
+
+/** Cria um elemento SVG com atributos e, se vier, um texto (textContent: nunca vira HTML). */
+function elementoSvg(tipo, atributos, texto) {
+  const elemento = document.createElementNS(SVG, tipo);
+  for (const [nome, valor] of Object.entries(atributos)) elemento.setAttribute(nome, valor);
+  if (texto !== undefined) elemento.textContent = texto;
+  return elemento;
+}
+
+/**
+ * Gráfico do burndown em SVG feito à mão (sem biblioteca): eixo de pontos (y) e dias (x),
+ * linha ideal tracejada e linha real cheia com um ponto por dia. Passar o mouse num ponto
+ * mostra o valor do dia (o <title> do SVG vira a dica do navegador).
+ */
+function graficoBurndown(r) {
+  // Desenha na largura da caixa (de 320 a 640): no celular, o texto continua com 12 px de verdade,
+  // em vez de um desenho de 640 encolhido (o texto ficava minúsculo).
+  const largura = Math.max(320, Math.min(640, $('#grafico-burndown').clientWidth || 640));
+  const altura = 280;
+  const margem = { esquerda: 44, direita: 28, topo: 36, base: 32 };
+  const areaX = largura - margem.esquerda - margem.direita;
+  const areaY = altura - margem.topo - margem.base;
+  const maximo = Math.max(r.total, 1); // evita dividir por zero se a Sprint tiver 0 pontos
+  const n = r.dias.length;
+  // Posição na tela: dia i no eixo x; v pontos no eixo y (0 embaixo, o total em cima).
+  const x = (i) => margem.esquerda + (n === 1 ? areaX / 2 : (i * areaX) / (n - 1));
+  const y = (v) => margem.topo + areaY - (v / maximo) * areaY;
+
+  const svg = elementoSvg('svg', {
+    viewBox: `0 0 ${largura} ${altura}`, class: 'grafico', role: 'img',
+    'aria-label': `Burndown: ${r.total} pontos planejados. Os valores de cada dia estão na tabela abaixo.`,
+  });
+
+  // Grade e números do eixo y: zero, metade e o total.
+  for (const v of [0, maximo / 2, maximo]) {
+    svg.append(
+      elementoSvg('line', { x1: margem.esquerda, x2: largura - margem.direita, y1: y(v), y2: y(v), class: 'grade' }),
+      elementoSvg('text', { x: margem.esquerda - 8, y: y(v) + 4, 'text-anchor': 'end', class: 'eixo' }, numero(v)),
+    );
+  }
+  // Dias no eixo x (dd/mm). Sprint longa: um rótulo a cada "passo" dias, para não encavalar.
+  const passo = Math.ceil(n / 8);
+  r.dias.forEach((d, i) => {
+    if (i % passo === 0 || i === n - 1) {
+      svg.append(elementoSvg('text', { x: x(i), y: altura - 10, 'text-anchor': 'middle', class: 'eixo' },
+        diaCurto(d.dia).slice(0, 5)));
+    }
+  });
+
+  // Linhas: "x,y x,y ..." é o formato do polyline.
+  const pontosDaLinha = (lista) => lista.map((p) => `${x(p.i)},${y(p.v)}`).join(' ');
+  const ideal = r.dias.map((d, i) => ({ i, v: d.ideal }));
+  const reais = r.dias.map((d, i) => ({ i, v: d.real, dia: d.dia })).filter((p) => p.v !== null);
+  svg.append(elementoSvg('polyline', { points: pontosDaLinha(ideal), class: 'linha-ideal' }));
+  svg.append(elementoSvg('polyline', { points: pontosDaLinha(reais), class: 'linha-real' }));
+  for (const p of reais) {
+    const grupo = elementoSvg('g', {});
+    grupo.append(
+      elementoSvg('title', {}, `${diaCurto(p.dia)}: faltam ${p.v} pontos (ideal: ${numero(r.dias[p.i].ideal)})`),
+      elementoSvg('circle', { cx: x(p.i), cy: y(p.v), r: 10, class: 'alvo' }), // área do mouse
+      elementoSvg('circle', { cx: x(p.i), cy: y(p.v), r: 4, class: 'ponto-real' }),
+    );
+    svg.append(grupo);
+  }
+
+  // Legenda em cima, à esquerda: amostra de cada linha + nome (a cor nunca fica sozinha).
+  svg.append(
+    elementoSvg('line', { x1: margem.esquerda, x2: margem.esquerda + 24, y1: 14, y2: 14, class: 'linha-real' }),
+    elementoSvg('text', { x: margem.esquerda + 30, y: 18, class: 'legenda' }, 'Real'),
+    elementoSvg('line', { x1: margem.esquerda + 80, x2: margem.esquerda + 104, y1: 14, y2: 14, class: 'linha-ideal' }),
+    elementoSvg('text', { x: margem.esquerda + 110, y: 18, class: 'legenda' }, 'Ideal'),
+  );
+  return svg;
 }
 
 // ---------- Início ----------

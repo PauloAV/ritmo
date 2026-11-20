@@ -486,3 +486,72 @@ export function periodoPadrao(agoraIso) {
   const segunda = Date.parse(`${segundaDaSemana(hoje)}T00:00:00Z`);
   return { de: new Date(segunda - 21 * UM_DIA).toISOString().slice(0, 10), ate: hoje };
 }
+
+// ---------- História 6: Burndown da Sprint ----------
+// Definição (regra 3 do CLAUDE.md), a mesma do burndown da Sprint 1 em scripts/metricas.mjs:
+// - Real  = pontos dos cartões da Sprint que NÃO estavam na coluna de papel 'fim' no fim de cada dia
+//           (dia do calendário de São Paulo). Vale o último movimento do cartão até aquele dia, por
+//           isso um cartão que sai de Concluído volta a contar como restante.
+// - Ideal = linha reta do total de pontos (1º dia) até zero (último dia): total × (1 − i / (dias − 1)).
+// Cartão sem pontos conta 0 e entra no aviso, para o time estimar. Vale o valor atual dos pontos
+// (o banco não guarda o histórico dos pontos). Dias depois de "hoje" ainda não têm valor real.
+
+/**
+ * Confere a Sprint antes de criar. Os checks de nome e datas também estão na tabela sprints (schema.sql).
+ * @param {{nome: string, inicio: string, fim: string, cartoes: string[]}} sprint datas "AAAA-MM-DD"
+ * @returns {string[]} lista de erros; vazia quando está tudo certo
+ */
+export function validarSprint({ nome, inicio, fim, cartoes }) {
+  const erros = [];
+  if ((nome ?? '').trim() === '') erros.push('O nome da Sprint é obrigatório.');
+  if (!inicio || !fim) erros.push('Escolha a data de início e a de fim da Sprint.');
+  else if (fim < inicio) erros.push('A data de fim não pode ser antes da data de início.');
+  if (!cartoes || cartoes.length === 0) erros.push('Escolha pelo menos um cartão para a Sprint.');
+  return erros;
+}
+
+/** Todos os dias "AAAA-MM-DD" do início ao fim, inclusive os dois. */
+export function diasDaSprint(inicio, fim) {
+  const dias = [];
+  for (let dia = inicio; dia <= fim;
+    dia = new Date(Date.parse(`${dia}T00:00:00Z`) + UM_DIA).toISOString().slice(0, 10)) {
+    dias.push(dia);
+  }
+  return dias;
+}
+
+/**
+ * Burndown de uma Sprint (história 6). Definições no início desta seção.
+ * @param {{cartoes: {id: string, titulo: string, pontos: number|null}[], movimentos: object[],
+ *          colunas: object[], inicio: string, fim: string, hoje: string}} dados
+ *   cartoes = só os da Sprint; datas "AAAA-MM-DD"; hoje vem de fora para o teste ser sempre igual
+ * @returns {{total: number, dias: {dia: string, ideal: number, real: number|null}[],
+ *            semPontos: {id: string, titulo: string}[]}}
+ */
+export function burndown({ cartoes, movimentos, colunas, inicio, fim, hoje }) {
+  const papelDa = (id) => colunas.find((c) => c.id === id)?.papel ?? null;
+  const pontosDe = (cartao) => cartao.pontos ?? 0;
+  const total = cartoes.reduce((soma, c) => soma + pontosDe(c), 0);
+
+  // O cartão estava concluído no fim do dia? Olha o último movimento dele até aquele dia.
+  const concluidoNoFimDo = (cartao, dia) => {
+    const ate = emOrdem(movimentos.filter((mov) => mov.cartao_id === cartao.id
+      && diaEmSaoPaulo(mov.movido_em) <= dia));
+    const ultimo = ate.at(-1);
+    return ultimo !== undefined && papelDa(ultimo.para_coluna_id) === 'fim';
+  };
+
+  const dias = diasDaSprint(inicio, fim);
+  return {
+    total,
+    dias: dias.map((dia, i) => ({
+      dia,
+      // Sprint de um dia: a linha ideal já termina em zero (evita dividir por zero).
+      ideal: dias.length === 1 ? 0 : total * (1 - i / (dias.length - 1)),
+      real: dia > hoje ? null
+        : cartoes.filter((c) => !concluidoNoFimDo(c, dia)).reduce((soma, c) => soma + pontosDe(c), 0),
+    })),
+    semPontos: cartoes.filter((c) => c.pontos === null || c.pontos === undefined)
+      .map((c) => ({ id: c.id, titulo: c.titulo })),
+  };
+}
