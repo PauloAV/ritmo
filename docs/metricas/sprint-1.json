@@ -1,0 +1,116 @@
+{
+  "sprint": 1,
+  "inicio": "2026-11-10",
+  "fim": "2026-11-17",
+  "fonte": "gh issue list + gh project item-list 3 (campos Pontos e Início) + histórico de status do board (GraphQL), coletado em 17/11/2026",
+  "historias": [
+    {
+      "numero": 1,
+      "titulo": "H1 · Conta e board com colunas",
+      "pontos": 5,
+      "criada_em": "2026-11-11T23:20:41Z",
+      "fechada_em": "2026-11-15T01:42:59Z",
+      "inicio": "2026-11-12",
+      "status": [
+        {
+          "em": "2026-11-11T23:20:47Z",
+          "coluna": "Backlog"
+        },
+        {
+          "em": "2026-11-12T23:26:08Z",
+          "coluna": "Em revisão"
+        },
+        {
+          "em": "2026-11-15T01:43:02Z",
+          "coluna": "Concluído"
+        }
+      ]
+    },
+    {
+      "numero": 2,
+      "titulo": "H2 · Convidar o time por código",
+      "pontos": 3,
+      "criada_em": "2026-11-11T23:20:50Z",
+      "fechada_em": "2026-11-17T02:52:40Z",
+      "inicio": "2026-11-12",
+      "status": [
+        {
+          "em": "2026-11-11T23:20:57Z",
+          "coluna": "Backlog"
+        },
+        {
+          "em": "2026-11-12T23:26:12Z",
+          "coluna": "Em andamento"
+        },
+        {
+          "em": "2026-11-15T19:24:04Z",
+          "coluna": "Em revisão"
+        },
+        {
+          "em": "2026-11-17T02:52:42Z",
+          "coluna": "Concluído"
+        }
+      ]
+    },
+    {
+      "numero": 3,
+      "titulo": "H3 · Cartões com histórico de movimentos",
+      "pontos": 5,
+      "criada_em": "2026-11-11T23:20:58Z",
+      "fechada_em": "2026-11-17T19:40:06Z",
+      "inicio": "2026-11-16",
+      "status": [
+        {
+          "em": "2026-11-11T23:21:04Z",
+          "coluna": "Backlog"
+        },
+        {
+          "em": "2026-11-12T23:26:17Z",
+          "coluna": "Sprint Backlog"
+        },
+        {
+          "em": "2026-11-17T03:01:32Z",
+          "coluna": "Em andamento"
+        },
+        {
+          "em": "2026-11-17T03:03:14Z",
+          "coluna": "Em revisão"
+        },
+        {
+          "em": "2026-11-17T19:40:08Z",
+          "coluna": "Concluído"
+        }
+      ]
+    },
+    {
+      "numero": 4,
+      "titulo": "H4 · Limite de WIP com justificativa",
+      "pontos": 3,
+      "criada_em": "2026-11-11T23:21:06Z",
+      "fechada_em": "2026-11-17T22:07:09Z",
+      "inicio": "2026-11-15",
+      "status": [
+        {
+          "em": "2026-11-11T23:21:13Z",
+          "coluna": "Backlog"
+        },
+        {
+          "em": "2026-11-12T23:26:22Z",
+          "coluna": "Sprint Backlog"
+        },
+        {
+          "em": "2026-11-17T19:41:14Z",
+          "coluna": "Em andamento"
+        },
+        {
+          "em": "2026-11-17T19:48:04Z",
+          "coluna": "Em revisão"
+        },
+        {
+          "em": "2026-11-17T22:07:12Z",
+          "coluna": "Concluído"
+        }
+      ]
+    }
+  ]
+}
