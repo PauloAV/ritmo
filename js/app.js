@@ -12,7 +12,7 @@ import {
   validarNome, moverColunaNaOrdem, podeArquivarColuna, proximaPosicao, colunasQueMudaram,
   normalizarCodigo, validarCodigoConvite, nomesDosMembros,
   validarCartao, colunaVizinha, montarHistorico, movimentoParaDesfazer,
-  metricasDoFluxo, formatarDias, formatarDataHora, periodoPadrao,
+  metricasDoFluxo, formatarDias, formatarDataHora, periodoPadrao, validarPeriodo,
 } from './regras.js';
 
 // Campos do board que as telas usam (o código de convite aparece no board, história 2).
@@ -713,8 +713,9 @@ function desenharMetricas() {
   const de = $('#metricas-de').value;
   const ate = $('#metricas-ate').value;
   const resumo = $('#resumo-metricas');
-  if (!de || !ate || de > ate) {
-    resumo.textContent = 'Escolha um período válido: a data inicial não pode ser depois da final.';
+  const erroNoPeriodo = validarPeriodo(de, ate); // a mesma conferência que a metricasDoFluxo faz
+  if (erroNoPeriodo) {
+    resumo.textContent = erroNoPeriodo;
     $('#tabela-metricas').replaceChildren();
     $('#tabela-throughput').replaceChildren();
     return;
