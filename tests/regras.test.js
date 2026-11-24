@@ -7,6 +7,8 @@ import {
   moverColunaNaOrdem, podeArquivarColuna, proximaPosicao, colunasQueMudaram,
   normalizarCodigo, validarCodigoConvite, nomesDosMembros,
   validarCartao, colunaVizinha, formatarDataHora, montarHistorico, movimentoParaDesfazer,
+  diaEmSaoPaulo, segundaDaSemana, diasEntre, datasDoFluxo, metricasDoFluxo, formatarDias, periodoPadrao,
+  validarPeriodo,
 } from '../js/regras.js';
 
 // Dados fictícios: nada de nome, e-mail ou dado real nos testes.
@@ -545,5 +547,213 @@ describe('validarCartao × schema.sql', () => {
     const sql = readFileSync(new URL('../supabase/schema.sql', import.meta.url), 'utf8');
     expect(sql).toContain('titulo         text not null check (length(trim(titulo)) > 0)');
     expect(sql).toContain('pontos         integer check (pontos is null or pontos >= 0)');
+  });
+});
+
+// ---------- História 5: Lead Time, Cycle Time e Throughput ----------
+
+describe('diaEmSaoPaulo', () => {
+  // O dia do calendário de São Paulo (UTC-3), para saber em que dia e semana um cartão foi concluído.
+  it('devolve o dia de São Paulo, que pode ser o anterior ao dia em UTC', () => {
+    expect(diaEmSaoPaulo('2026-11-19T15:00:00Z')).toBe('2026-11-19');
+    expect(diaEmSaoPaulo('2026-11-19T02:30:00Z')).toBe('2026-11-18'); // 23:30 do dia 18 em SP
+  });
+});
+
+describe('segundaDaSemana', () => {
+  // Semana de segunda a domingo. 16/11/2026 é uma segunda-feira.
+  it('devolve a segunda-feira da semana do dia', () => {
+    expect(segundaDaSemana('2026-11-16')).toBe('2026-11-16'); // segunda
+    expect(segundaDaSemana('2026-11-19')).toBe('2026-11-16'); // quinta
+    expect(segundaDaSemana('2026-11-22')).toBe('2026-11-16'); // domingo ainda é a mesma semana
+    expect(segundaDaSemana('2026-11-23')).toBe('2026-11-23'); // segunda seguinte
+  });
+});
+
+describe('diasEntre', () => {
+  // Dias com fração, contados da hora exata: 12 horas = 0,5 dia.
+  it('conta dias e frações de dia entre dois instantes', () => {
+    expect(diasEntre('2026-11-16T12:00:00Z', '2026-11-19T00:00:00Z')).toBe(2.5);
+    expect(diasEntre('2026-11-18T00:00:00Z', '2026-11-18T12:00:00Z')).toBe(0.5);
+  });
+});
+
+// Colunas com nomes diferentes dos padrões de propósito: as métricas acham as colunas pelo PAPEL.
+const colunasDoFluxo = [
+  { id: 'c-entrada', nome: 'Ideias', papel: null },
+  { id: 'c-fazendo', nome: 'Fazendo', papel: 'inicio' },
+  { id: 'c-conferir', nome: 'Conferir', papel: null },
+  { id: 'c-pronto', nome: 'Pronto!', papel: 'fim' },
+];
+// m(cartão, de, para, quando): um movimento fictício (de = null é a criação do cartão).
+let idMov = 0;
+const m = (cartao_id, de_coluna_id, para_coluna_id, movido_em) =>
+  ({ id: ++idMov, cartao_id, de_coluna_id, para_coluna_id, movido_em });
+
+describe('datasDoFluxo', () => {
+  it('acha a criação, a 1ª entrada na coluna de início e a entrada na coluna de fim', () => {
+    const movs = [
+      m('A', 'c-conferir', 'c-pronto', '2026-11-19T00:00:00Z'),
+      m('A', null, 'c-entrada', '2026-11-16T12:00:00Z'),
+      m('A', 'c-entrada', 'c-fazendo', '2026-11-17T12:00:00Z'),
+      m('A', 'c-fazendo', 'c-conferir', '2026-11-18T00:00:00Z'),
+    ];
+    expect(datasDoFluxo(movs, colunasDoFluxo)).toEqual({
+      criadoEm: '2026-11-16T12:00:00Z',
+      inicioEm: '2026-11-17T12:00:00Z',
+      fimEm: '2026-11-19T00:00:00Z',
+    });
+  });
+
+  it('cartão que voltou e foi concluído de novo: 1ª entrada no início e ÚLTIMA entrada no fim', () => {
+    const movs = [
+      m('B', null, 'c-entrada', '2026-11-10T09:00:00Z'),
+      m('B', 'c-entrada', 'c-fazendo', '2026-11-11T09:00:00Z'),
+      m('B', 'c-fazendo', 'c-pronto', '2026-11-12T09:00:00Z'),
+      m('B', 'c-pronto', 'c-fazendo', '2026-11-12T15:00:00Z'),
+      m('B', 'c-fazendo', 'c-pronto', '2026-11-13T09:00:00Z'),
+    ];
+    expect(datasDoFluxo(movs, colunasDoFluxo)).toMatchObject({
+      inicioEm: '2026-11-11T09:00:00Z', fimEm: '2026-11-13T09:00:00Z',
+    });
+  });
+
+  it('cartão que saiu da coluna de fim não está concluído (fimEm = null)', () => {
+    const movs = [
+      m('C', null, 'c-entrada', '2026-11-10T09:00:00Z'),
+      m('C', 'c-entrada', 'c-pronto', '2026-11-11T09:00:00Z'),
+      m('C', 'c-pronto', 'c-conferir', '2026-11-12T09:00:00Z'),
+    ];
+    expect(datasDoFluxo(movs, colunasDoFluxo).fimEm).toBeNull();
+  });
+
+  it('cartão que nunca passou pela coluna de início: inicioEm = null', () => {
+    const movs = [
+      m('D', null, 'c-entrada', '2026-11-18T00:00:00Z'),
+      m('D', 'c-entrada', 'c-pronto', '2026-11-18T12:00:00Z'),
+    ];
+    expect(datasDoFluxo(movs, colunasDoFluxo)).toEqual({
+      criadoEm: '2026-11-18T00:00:00Z', inicioEm: null, fimEm: '2026-11-18T12:00:00Z',
+    });
+  });
+});
+
+describe('metricasDoFluxo', () => {
+  // Board fictício. Período: 09/11 a 22/11/2026 (2 semanas: seg 09/11 e seg 16/11).
+  // Conta à mão (dias com fração; SP = UTC-3):
+  //   A: criado 16/11 12h → início 17/11 12h → fim 19/11 00h UTC (18/11 21h em SP)
+  //      Lead = 2,5 dias · Cycle = 1,5 dia · semana de 16/11
+  //   B: criado 10/11 09h → 1º início 11/11 09h → fim (última entrada) 13/11 09h
+  //      Lead = 3,0 dias · Cycle = 2,0 dias · semana de 09/11
+  //   C: criado 18/11 00h → direto para o fim 18/11 12h (nunca passou pelo início)
+  //      Lead = 0,5 dia · Cycle = — (fora da média) · semana de 16/11
+  //   D: em andamento, não concluído → fora
+  //   E: concluído em 02/11 → fora do período
+  // Médias: Lead = (2,5 + 3,0 + 0,5) / 3 = 2,0 · Cycle = (1,5 + 2,0) / 2 = 1,75
+  // Throughput: semana 09/11 = 1, semana 16/11 = 2 → média 3 / 2 = 1,5 por semana
+  const cartoes = [
+    { id: 'A', titulo: 'Cartão A' }, { id: 'B', titulo: 'Cartão B' }, { id: 'C', titulo: 'Cartão C' },
+    { id: 'D', titulo: 'Cartão D' }, { id: 'E', titulo: 'Cartão E' },
+  ];
+  const movimentos = [
+    m('A', null, 'c-entrada', '2026-11-16T12:00:00Z'),
+    m('A', 'c-entrada', 'c-fazendo', '2026-11-17T12:00:00Z'),
+    m('A', 'c-fazendo', 'c-pronto', '2026-11-19T00:00:00Z'),
+    m('B', null, 'c-entrada', '2026-11-10T09:00:00Z'),
+    m('B', 'c-entrada', 'c-fazendo', '2026-11-11T09:00:00Z'),
+    m('B', 'c-fazendo', 'c-pronto', '2026-11-12T09:00:00Z'),
+    m('B', 'c-pronto', 'c-fazendo', '2026-11-12T15:00:00Z'),
+    m('B', 'c-fazendo', 'c-pronto', '2026-11-13T09:00:00Z'),
+    m('C', null, 'c-entrada', '2026-11-18T00:00:00Z'),
+    m('C', 'c-entrada', 'c-pronto', '2026-11-18T12:00:00Z'),
+    m('D', null, 'c-entrada', '2026-11-12T00:00:00Z'),
+    m('D', 'c-entrada', 'c-fazendo', '2026-11-13T00:00:00Z'),
+    m('E', null, 'c-entrada', '2026-10-30T00:00:00Z'),
+    m('E', 'c-entrada', 'c-pronto', '2026-11-02T00:00:00Z'),
+  ];
+  const periodo = { de: '2026-11-09', ate: '2026-11-22' };
+  const r = metricasDoFluxo({ cartoes, movimentos, colunas: colunasDoFluxo, ...periodo });
+
+  it('mostra o valor de cada cartão concluído no período, do mais recente para o mais antigo', () => {
+    expect(r.cartoes.map((c) => [c.titulo, c.leadTime, c.cycleTime])).toEqual([
+      ['Cartão A', 2.5, 1.5],
+      ['Cartão C', 0.5, null],
+      ['Cartão B', 3, 2],
+    ]);
+  });
+
+  it('calcula as médias do período (o Cycle Time sem o cartão que não passou pelo início)', () => {
+    expect(r.leadTimeMedio).toBe(2);
+    expect(r.cycleTimeMedio).toBe(1.75);
+  });
+
+  it('conta o throughput por semana, de segunda a domingo, e a média por semana', () => {
+    expect(r.throughput).toEqual([
+      { semana: '2026-11-09', concluidos: 1 },
+      { semana: '2026-11-16', concluidos: 2 },
+    ]);
+    expect(r.throughputMedio).toBe(1.5);
+  });
+
+  it('usa o dia de São Paulo nas pontas do período', () => {
+    // 23/11 02:30 UTC = 22/11 23:30 em SP: ainda está dentro do período que termina em 22/11.
+    const movs = [m('F', null, 'c-entrada', '2026-11-20T00:00:00Z'), m('F', 'c-entrada', 'c-pronto', '2026-11-23T02:30:00Z')];
+    const so = metricasDoFluxo({ cartoes: [{ id: 'F', titulo: 'F' }], movimentos: movs, colunas: colunasDoFluxo, ...periodo });
+    expect(so.cartoes).toHaveLength(1);
+    expect(so.throughput.at(-1)).toEqual({ semana: '2026-11-16', concluidos: 1 });
+  });
+
+  it('período sem nenhum cartão concluído: médias nulas e semanas com zero', () => {
+    const vazio = metricasDoFluxo({ cartoes, movimentos, colunas: colunasDoFluxo, de: '2026-11-23', ate: '2026-11-29' });
+    expect(vazio).toMatchObject({ cartoes: [], leadTimeMedio: null, cycleTimeMedio: null, throughputMedio: 0 });
+    expect(vazio.throughput).toEqual([{ semana: '2026-11-23', concluidos: 0 }]);
+  });
+
+  it('dá o mesmo resultado se o time renomear as colunas (as métricas usam o papel)', () => {
+    const renomeadas = colunasDoFluxo.map((c) => ({ ...c, nome: `Outro nome ${c.id}` }));
+    expect(metricasDoFluxo({ cartoes, movimentos, colunas: renomeadas, ...periodo })).toEqual(r);
+  });
+
+  it('recusa período com "de" depois de "ate" (antes dava throughput médio NaN, 0 ÷ 0 semanas)', () => {
+    expect(() => metricasDoFluxo({ cartoes, movimentos, colunas: colunasDoFluxo, de: '2026-11-30', ate: '2026-11-09' }))
+      .toThrow('Escolha um período válido: a data inicial não pode ser depois da final.');
+    // Mesma semana, mas invertido: também é recusado (antes mostrava uma semana com zero).
+    expect(() => metricasDoFluxo({ cartoes, movimentos, colunas: colunasDoFluxo, de: '2026-11-19', ate: '2026-11-17' }))
+      .toThrow('período válido');
+  });
+});
+
+describe('validarPeriodo', () => {
+  const mensagem = 'Escolha um período válido: a data inicial não pode ser depois da final.';
+  it('aceita "de" antes de "ate" ou no mesmo dia', () => {
+    expect(validarPeriodo('2026-11-09', '2026-11-22')).toBeNull();
+    expect(validarPeriodo('2026-11-19', '2026-11-19')).toBeNull();
+  });
+  it('recusa data vazia e "de" depois de "ate"', () => {
+    expect(validarPeriodo('', '2026-11-22')).toBe(mensagem);
+    expect(validarPeriodo('2026-11-09', '')).toBe(mensagem);
+    expect(validarPeriodo('2026-11-23', '2026-11-22')).toBe(mensagem);
+  });
+});
+
+describe('formatarDias', () => {
+  it('mostra os dias com uma casa decimal e vírgula; sem valor vira "—"', () => {
+    expect(formatarDias(2.5)).toBe('2,5');
+    expect(formatarDias(2)).toBe('2,0');
+    expect(formatarDias(1.75)).toBe('1,8'); // arredonda a 2ª casa
+    expect(formatarDias(null)).toBe('—');
+  });
+});
+
+describe('periodoPadrao', () => {
+  // Últimas 4 semanas: da segunda-feira de 3 semanas atrás até hoje (dia de São Paulo).
+  it('vai da segunda de 3 semanas atrás até hoje', () => {
+    // 19/11/2026 (quinta) 15h UTC → semana de 16/11; 3 semanas antes: 26/10
+    expect(periodoPadrao('2026-11-19T15:00:00Z')).toEqual({ de: '2026-10-26', ate: '2026-11-19' });
+  });
+
+  it('usa o dia de São Paulo: segunda 01h UTC ainda é domingo em SP', () => {
+    // 23/11 01:00 UTC = 22/11 22:00 em SP (domingo) → semana de 16/11
+    expect(periodoPadrao('2026-11-23T01:00:00Z')).toEqual({ de: '2026-10-26', ate: '2026-11-22' });
   });
 });

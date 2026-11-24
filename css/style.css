@@ -115,6 +115,15 @@ button.link { border: none; background: none; color: #3b2f8f; text-decoration: u
 .cartao details { margin-top: .25rem; font-size: .8rem; }
 .historico { padding-left: 1.2rem; margin: .25rem 0 0; color: #57606a; }
 
+/* Métricas do fluxo (história 5). */
+.metricas { margin-top: 1.5rem; }
+.definicoes { font-size: .85rem; color: #57606a; max-width: 70ch; }
+.resumo-metricas { font-weight: 600; }
+.tabela-rolavel { overflow-x: auto; margin-bottom: 1rem; } /* no celular, a tabela rola para o lado */
+.metricas table { border-collapse: collapse; background: #fff; font-size: .9rem; }
+.metricas th, .metricas td { border: 1px solid #d0d7de; padding: .3rem .6rem; text-align: left; }
+.metricas td:nth-child(n+5) { text-align: right; font-variant-numeric: tabular-nums; }
+
 /* Celular: uma coluna embaixo da outra. */
 @media (max-width: 800px) {
   main { padding: 1rem; }

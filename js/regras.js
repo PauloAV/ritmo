@@ -368,3 +368,135 @@ export function movimentoParaDesfazer(movimentos) {
   const ultimo = emOrdem(movimentos).at(-1);
   return ultimo?.de_coluna_id ?? null;
 }
+
+// ---------- História 5: Lead Time, Cycle Time e Throughput ----------
+// Definições (regra 3 do CLAUDE.md). As colunas são achadas pelo PAPEL, nunca pelo nome:
+// - Lead Time  = criação do cartão até a entrada na coluna de papel 'fim' (Concluído)
+// - Cycle Time = PRIMEIRA entrada na coluna de papel 'inicio' (Em andamento) até a entrada no 'fim'
+// - Throughput = cartões concluídos por semana (segunda a domingo, no calendário de São Paulo)
+// Um cartão só está concluído se está na coluna de fim agora; se ele voltou e foi concluído de novo,
+// vale a ÚLTIMA entrada no fim. Tempos em dias com fração, contados da hora exata (12 h = 0,5 dia).
+
+const formatoDia = new Intl.DateTimeFormat('en-CA', {
+  timeZone: FUSO_DA_TELA, year: 'numeric', month: '2-digit', day: '2-digit',
+});
+
+/** Dia do calendário de São Paulo de um instante em UTC: "AAAA-MM-DD". */
+export function diaEmSaoPaulo(iso) {
+  return formatoDia.format(new Date(iso)); // o formato en-CA já sai como AAAA-MM-DD
+}
+
+const UM_DIA = 24 * 60 * 60 * 1000; // em milissegundos
+
+/** Segunda-feira da semana de um dia "AAAA-MM-DD" (a semana vai de segunda a domingo). */
+export function segundaDaSemana(dia) {
+  const data = new Date(`${dia}T00:00:00Z`);
+  const diasDesdeSegunda = (data.getUTCDay() + 6) % 7; // getUTCDay: domingo = 0, segunda = 1...
+  return new Date(data.getTime() - diasDesdeSegunda * UM_DIA).toISOString().slice(0, 10);
+}
+
+/** Dias (com fração) entre dois instantes em UTC. */
+export function diasEntre(isoInicio, isoFim) {
+  return (Date.parse(isoFim) - Date.parse(isoInicio)) / UM_DIA;
+}
+
+/**
+ * Datas do fluxo de UM cartão, a partir do histórico de movimentos dele.
+ * @param {{de_coluna_id: string|null, para_coluna_id: string, movido_em: string, id: number}[]} movimentos
+ * @param {{id: string, papel: string|null}[]} colunas do board (inclusive as arquivadas)
+ * @returns {{criadoEm: string|null, inicioEm: string|null, fimEm: string|null}}
+ *   criadoEm = movimento de criação (de_coluna_id nulo); inicioEm = 1ª entrada na coluna 'inicio';
+ *   fimEm = entrada no 'fim', só se o último movimento levou o cartão para lá (senão, não está concluído)
+ */
+export function datasDoFluxo(movimentos, colunas) {
+  const papelDa = (id) => colunas.find((c) => c.id === id)?.papel ?? null;
+  const ordem = emOrdem(movimentos);
+  const criacao = ordem.find((mov) => mov.de_coluna_id === null);
+  const primeiraNoInicio = ordem.find((mov) => papelDa(mov.para_coluna_id) === 'inicio');
+  const ultimo = ordem.at(-1);
+  return {
+    criadoEm: criacao?.movido_em ?? null,
+    inicioEm: primeiraNoInicio?.movido_em ?? null,
+    fimEm: ultimo && papelDa(ultimo.para_coluna_id) === 'fim' ? ultimo.movido_em : null,
+  };
+}
+
+/**
+ * Lead Time, Cycle Time e Throughput de um período (história 5). Definições no início desta seção.
+ * Entram os cartões CONCLUÍDOS no período: o dia (de São Paulo) da entrada no fim está entre de e ate.
+ * @param {{cartoes: {id: string, titulo: string}[], movimentos: object[], colunas: object[],
+ *          de: string, ate: string}} dados de/ate = "AAAA-MM-DD", inclusive
+ * @returns {{cartoes: object[], leadTimeMedio: number|null, cycleTimeMedio: number|null,
+ *            throughput: {semana: string, concluidos: number}[], throughputMedio: number}}
+ *   cartoes vem do concluído mais recente para o mais antigo; média nula quando não há valor;
+ *   throughputMedio = concluídos no período ÷ número de semanas da lista
+ */
+export function metricasDoFluxo({ cartoes, movimentos, colunas, de, ate }) {
+  // Sem esta conferência, "de" depois de "ate" dava zero semanas e throughputMedio = 0 ÷ 0 = NaN.
+  const erroNoPeriodo = validarPeriodo(de, ate);
+  if (erroNoPeriodo) throw new Error(erroNoPeriodo);
+
+  const concluidos = [];
+  for (const cartao of cartoes) {
+    const doCartao = movimentos.filter((mov) => mov.cartao_id === cartao.id);
+    const { criadoEm, inicioEm, fimEm } = datasDoFluxo(doCartao, colunas);
+    if (!fimEm) continue; // não está concluído
+    const dia = diaEmSaoPaulo(fimEm);
+    if (dia < de || dia > ate) continue; // concluído fora do período
+    concluidos.push({
+      id: cartao.id,
+      titulo: cartao.titulo,
+      criadoEm, inicioEm, fimEm,
+      leadTime: diasEntre(criadoEm, fimEm),
+      cycleTime: inicioEm ? diasEntre(inicioEm, fimEm) : null, // nunca passou pelo início: sem Cycle Time
+    });
+  }
+  concluidos.sort((x, y) => Date.parse(y.fimEm) - Date.parse(x.fimEm));
+
+  const media = (valores) => (valores.length === 0 ? null : valores.reduce((s, v) => s + v, 0) / valores.length);
+  const cycleTimes = concluidos.map((c) => c.cycleTime).filter((v) => v !== null);
+
+  // Uma linha para cada semana do período (inclusive as sem nenhum concluído).
+  const throughput = [];
+  for (let semana = segundaDaSemana(de); semana <= ate;
+    semana = new Date(Date.parse(`${semana}T00:00:00Z`) + 7 * UM_DIA).toISOString().slice(0, 10)) {
+    const concluidosNaSemana = concluidos.filter((c) => segundaDaSemana(diaEmSaoPaulo(c.fimEm)) === semana);
+    throughput.push({ semana, concluidos: concluidosNaSemana.length });
+  }
+
+  return {
+    cartoes: concluidos,
+    leadTimeMedio: media(concluidos.map((c) => c.leadTime)),
+    cycleTimeMedio: media(cycleTimes),
+    throughput,
+    throughputMedio: concluidos.length / throughput.length,
+  };
+}
+
+/**
+ * Confere o período escolhido nas métricas. Datas "AAAA-MM-DD"; nesse formato, comparar os textos
+ * é o mesmo que comparar as datas. O mesmo dia nas duas pontas vale (período de um dia).
+ * @returns {string|null} a mensagem de erro, ou null se o período está certo
+ */
+export function validarPeriodo(de, ate) {
+  if (!de || !ate || de > ate) return 'Escolha um período válido: a data inicial não pode ser depois da final.';
+  return null;
+}
+
+const formatoUmaCasa = new Intl.NumberFormat('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+
+/** Dias para a tela: uma casa decimal, com vírgula ("2,5"); sem valor (null) vira "—". */
+export function formatarDias(dias) {
+  return dias === null ? '—' : formatoUmaCasa.format(dias);
+}
+
+/**
+ * Período que a tela de métricas mostra ao abrir: as últimas 4 semanas, da segunda-feira de
+ * 3 semanas atrás até hoje (dias de São Paulo). Recebe o "agora" para o teste ser sempre igual.
+ * @param {string} agoraIso ex.: new Date().toISOString()
+ */
+export function periodoPadrao(agoraIso) {
+  const hoje = diaEmSaoPaulo(agoraIso);
+  const segunda = Date.parse(`${segundaDaSemana(hoje)}T00:00:00Z`);
+  return { de: new Date(segunda - 21 * UM_DIA).toISOString().slice(0, 10), ate: hoje };
+}
