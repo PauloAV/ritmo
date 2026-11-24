@@ -485,3 +485,51 @@ Todos podem ser apagados (os movimentos não saem, por regra).
    - decidir o Início da H1 e da H2;
    - Review e Retrospectiva;
    - conferir as histórias no Pages.
+
+---
+
+## 24/11/2026 (noite) · Paulo · Sprint 2 · merge do #21 e tela do CFD (PR #22)
+
+### O que foi feito
+1. **PR #21 (H6):** o Kauan trouxe a `main` (#18 e #20) para a branch (`4137d63`).
+   - A resolução foi conferida numa cópia da branch: 102 testes, nenhum marcador de conflito, CRLF mantido. Ficou registrado num comentário no PR.
+   - **Mesclado** (`29b39bc`), e a issue #6 fechou.
+2. **H7 (#7), na `historia-7-cfd`:**
+   - merge da `main` com a H6 (`56199cb`): 4 conflitos do tipo "as duas acrescentaram no mesmo lugar", resolvidos mantendo as duas partes, com a H6 antes da H7;
+   - o `cfd` passou a usar o `diasDaSprint` da H6 (`4b69730`);
+   - **tela do CFD** (`6028232`): gráfico de áreas empilhadas em SVG feito à mão, legenda, dica por dia, tabela e "Baixar CSV". São 107 testes.
+   - Teste no navegador (1280 e 390 px): **14/14**. Os prints mostraram rótulos do eixo x encavalados e o último dia cortado; corrigido.
+3. **PR #22 (H7)** aberto, com o Kauan como revisor.
+4. **Issue #23 (bug):** o burndown da H6 tem o mesmo código de rótulos do eixo x e encavala os dois últimos dias em Sprint com mais de 8 dias. Por decisão do PO, é um item separado, sem Sprint escolhida.
+
+### Decisões
+- **PO:** a correção dos rótulos do burndown vira um item separado (#23), fora do PR da H7.
+- **Erro da ordem dos merges (abaixo):** não reverter o #21 na `main`. O único efeito foi o conflito no #19, que se resolve atualizando a branch dele.
+
+### Erros da IA
+- **Mesclou o #21 antes do #19**, contra a ordem combinada. O #19 voltou a ter conflito, só no `docs/log-sessoes.md` (as duas branches acrescentam seções no fim). O `docs/registro-ia.md` junta sem conflito.
+- Uma edição deixou o `js/app.js` inteiro com LF; pego antes do commit.
+- Para descobrir o usuário do Kauan no GitHub, a IA rodou um `gh pr create` que **abriu o PR #22 de verdade**, com o corpo provisório "x" e um revisor que não existe. Corrigido em seguida (descrição completa e revisor `kafs87`).
+
+### Cuidados
+- **Antes de mesclar, conferir no log a ordem combinada dos PRs.**
+- `gh pr create` cria o PR na hora: nunca usar para "testar" um parâmetro. Para achar o usuário de alguém: `gh api repos/PauloAV/ritmo/collaborators --jq '.[].login'`.
+- Num board novo, o CFD aparece como um "pico" no último dia, porque o banco não aceita movimento com data passada (regra 1). Não é erro.
+
+### Dados fictícios criados (no Supabase do time)
+Contas `teste<número>h7@teste.com` (Ana Teste) e boards "Board H7 Teste" e "Board H7 Outro Teste", com os cartões A a D. Podem ser apagados (os movimentos não saem, por regra).
+
+### Estado ao fim da sessão
+- **`main`:** H1 a H6, as métricas da Sprint 1 e o ajuste do período (#20).
+- **PRs abertos:**
+  - **#19** (log e registro do Kauan): conflito no log, sem aprovação;
+  - **#22** (H7): esperando a revisão do Kauan.
+- **A Sprint 2 termina hoje (24/11).** H5 e H6 entregues; H7 em revisão.
+
+### Pendências
+1. **Kauan:** atualizar o #19 com a `main`, mantendo a seção dele (17 a 19/11) antes da seção de 19/11 que já está na `main`. **Paulo:** revisar e mesclar o #19 **antes** do #22.
+2. **Paulo (com a IA), depois do #19:** atualizar a `historia-7-cfd` com a `main`. Deve dar conflito no fim deste log; manter as duas partes, em ordem de data.
+3. **Kauan:** revisar o #22. Depois do merge, conferir o CFD no Pages.
+4. **Fechamento da Sprint 2:** métricas (`/metricas-sprint`), Review e Retrospectiva. Decidir se a H7 conta na Sprint 2 (depende do merge hoje).
+5. **Sprint Planning da Sprint 3:** decidir em qual Sprint entra a #23.
+6. **Ainda da Sprint 1:** decidir o Início da H1 e da H2; Review e Retrospectiva.
