@@ -369,6 +369,31 @@ Contas `teste<número>h4@teste.com` (Ana Teste), boards "Board H4 Teste" e cart�
 
 ---
 
+## 17 a 19/11/2026 · Kauan · Sprint 2 · revisão e merge do PR #17 (métricas da Sprint 1)
+
+### O que foi feito
+1. **1ª revisão do PR #17 pela DoD** (`/revisar-dod`), publicada no PR como comentário, **sem aprovar** (resumo + 3 comentários nas linhas):
+   - 74 testes passando numa cópia do PR; CI passou; sem conflito com a `main`;
+   - as contas foram refeitas à mão a partir do `sprint-1.json` e batem: Lead Time 5,0, Cycle Time 2,25, Throughput 4, Velocity 16, burndown e CFD dia a dia;
+   - pedido antes do merge: tirar do log as pendências já resolvidas (o próprio PR e o link do README);
+   - sugestões: separar o rótulo do CFD em variáveis com nome e ordenar o `status` por data.
+2. **O Paulo corrigiu tudo no `6df7ae8`.** 2ª revisão: o novo rótulo do CFD dá a mesma posição de antes; rodando o script de novo numa cópia isolada, os números e os dois SVGs saem iguais. **PR aprovado e mesclado** (`fc9974f`).
+3. **GitHub CLI (`gh`) instalado** no computador do Kauan (`winget install GitHub.cli`) e login feito com a conta do Kauan.
+
+### Decisão
+- **Toda mudança passa por PR e revisão, até as pequenas.** O `a34c867` (links do README) foi direto na `main`, sem PR; o Paulo apontou no PR #17 e o Kauan concordou.
+
+### Cuidados
+- **Não ligar o `node_modules` do projeto numa cópia temporária com junction.** Ao apagar a cópia com `git worktree remove --force`, o Git seguiu a ligação e apagou o `node_modules` do projeto (erro da IA, corrigido com `npm ci`). Para testar um PR, rode `npm ci` na própria cópia ou só use o resultado do CI.
+- Depois de instalar o `gh`, o terminal já aberto não o encontra. Abra um terminal novo ou use `& "C:\Program Files\GitHub CLI\gh.exe"`. O `gh auth login` precisa de um terminal interativo, fora do `!` do Claude Code.
+
+### Pendências
+1. **Antes da Retrospectiva:** decidir juntos o Início da H1 e da H2. Se mudar, coletar os dados de novo e rodar `node scripts/metricas.mjs docs/metricas/sprint-1.json`.
+2. **Sprint Review e Retrospectiva da Sprint 1.**
+3. Conferir H2, H3 e H4 no Pages.
+
+---
+
 ## 19/11/2026 · Kauan · Sprint 2 · merge da H5, ajuste do período e H6
 
 ### O que foi feito
