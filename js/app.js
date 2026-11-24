@@ -64,6 +64,76 @@ async function acao(fazer) {
   }
 }
 
+/**
+ * Abre a caixa de diálogo da página (#dialogo, index.html), no lugar do prompt() e do confirm()
+ * do navegador. Diferenças: tem o visual do Ritmo, mostra vários campos de uma vez e, se o valor
+ * estiver errado, mostra o erro dentro da caixa e deixa a pessoa corrigir sem perder o que digitou.
+ * Texto vindo do usuário (nome da coluna, política) entra só por textContent e value.
+ * @param {object} opcoes
+ * @param {string} opcoes.titulo
+ * @param {string} [opcoes.texto] explicação acima dos campos (\n quebra a linha)
+ * @param {{rotulo: string, valor?: string, multilinha?: boolean, inputmode?: string}[]} opcoes.campos
+ *        lista vazia = só confirmar (como o confirm())
+ * @param {string} opcoes.botaoOk texto do botão que confirma (ex.: "Renomear")
+ * @param {(valores: string[]) => string[]} [opcoes.validar] devolve os erros; vazio = pode fechar
+ * @returns {Promise<string[]|null>} valores digitados, na ordem dos campos; null = Cancelar ou Esc
+ */
+function perguntar({ titulo, texto = '', campos, botaoOk, validar = () => [] }) {
+  const dialogo = $('#dialogo');
+  $('#dialogo-titulo').textContent = titulo;
+  $('#dialogo-texto').textContent = texto;
+  $('#dialogo-texto').hidden = texto === '';
+  $('#dialogo-erro').textContent = '';
+  $('#dialogo-ok').textContent = botaoOk;
+
+  const entradas = campos.map((campo) => {
+    const rotulo = document.createElement('label');
+    rotulo.textContent = campo.rotulo;
+    const entrada = document.createElement(campo.multilinha ? 'textarea' : 'input');
+    if (!campo.multilinha) entrada.type = 'text';
+    entrada.value = campo.valor ?? '';
+    entrada.autocomplete = 'off';
+    if (campo.inputmode) entrada.inputMode = campo.inputmode;
+    rotulo.append(entrada);
+    return entrada;
+  });
+  $('#dialogo-campos').replaceChildren(...entradas.map((entrada) => entrada.parentElement));
+
+  return new Promise((resolver) => {
+    const form = $('#dialogo-form');
+    const cancelar = $('#dialogo-cancelar');
+
+    function aoConfirmar(evento) {
+      evento.preventDefault();
+      const valores = entradas.map((entrada) => entrada.value);
+      const erros = validar(valores);
+      if (erros.length > 0) {
+        $('#dialogo-erro').textContent = erros.join(' '); // a caixa continua aberta
+        return;
+      }
+      fechar(valores);
+    }
+    function aoCancelar(evento) {
+      evento.preventDefault(); // Esc: quem fecha é o fechar(), para tirar os listeners junto
+      fechar(null);
+    }
+    function fechar(resultado) {
+      form.removeEventListener('submit', aoConfirmar);
+      cancelar.removeEventListener('click', aoCancelar);
+      dialogo.removeEventListener('cancel', aoCancelar);
+      dialogo.close();
+      resolver(resultado);
+    }
+
+    form.addEventListener('submit', aoConfirmar);
+    cancelar.addEventListener('click', aoCancelar);
+    dialogo.addEventListener('cancel', aoCancelar); // tecla Esc
+    dialogo.showModal();
+    // Foco no primeiro campo. Sem campos (excluir), o foco fica no Cancelar: Enter sem querer não exclui.
+    (entradas[0] ?? cancelar).focus();
+  });
+}
+
 /** Cria um botão. rotulo = texto lido pelo leitor de tela (útil quando o botão é só uma seta). */
 function criarBotao(texto, rotulo, aoClicar, desativado = false) {
   const botao = document.createElement('button');
@@ -477,7 +547,7 @@ async function moverCartao(cartao, paraColuna) {
   }
   // História 4: se o destino está no limite de WIP, avisa e pede a justificativa antes de mover.
   const quantidadeNoDestino = cartoesAtuais.filter((c) => c.coluna_id === paraColuna).length;
-  const { pode, justificativa } = pedirJustificativaSePreciso(destino, cartao.coluna_id, quantidadeNoDestino);
+  const { pode, justificativa } = await pedirJustificativaSePreciso(destino, cartao.coluna_id, quantidadeNoDestino);
   if (!pode) return; // cancelou ou deixou a justificativa vazia: o cartão fica onde está
 
   const { error } = await supabase.rpc('mover_cartao', {
@@ -542,13 +612,14 @@ async function criarCartao() {
 }
 
 async function renomearColuna(coluna) {
-  const novoNome = prompt('Novo nome da coluna:', coluna.nome);
-  if (novoNome === null) return; // clicou em Cancelar
-  const erros = validarNome(novoNome, 'da coluna');
-  if (erros.length > 0) {
-    mostrarMensagem(erros.join(' '));
-    return;
-  }
+  const valores = await perguntar({
+    titulo: 'Renomear coluna',
+    campos: [{ rotulo: 'Novo nome da coluna', valor: coluna.nome }],
+    botaoOk: 'Renomear',
+    validar: ([nome]) => validarNome(nome, 'da coluna'),
+  });
+  if (valores === null) return; // clicou em Cancelar
+  const [novoNome] = valores;
   const { error } = await supabase.from('colunas').update({ nome: novoNome.trim() }).eq('id', coluna.id);
   if (error) {
     mostrarMensagem('Não foi possível renomear a coluna.');
@@ -559,21 +630,20 @@ async function renomearColuna(coluna) {
 
 /** Muda o limite de WIP e a política de entrada da coluna (história 4). */
 async function editarWipEPolitica(coluna) {
-  const digitado = prompt(
-    `Limite de WIP da coluna "${coluna.nome}" (deixe vazio para não ter limite):`,
-    coluna.limite_wip ?? '',
-  );
-  if (digitado === null) return; // clicou em Cancelar
-  const { limite, erros } = lerLimiteWip(digitado);
-  if (erros.length > 0) {
-    mostrarMensagem(erros.join(' '));
-    return;
-  }
-  const politica = prompt(
-    `Política de entrada da coluna "${coluna.nome}" (ex.: "Só entra com critério de aceite claro"; vazio = sem política):`,
-    coluna.politica ?? '',
-  );
-  if (politica === null) return;
+  // Os dois campos na mesma caixa (antes eram dois prompt() seguidos).
+  const valores = await perguntar({
+    titulo: `WIP e política de "${coluna.nome}"`,
+    campos: [
+      { rotulo: 'Limite de WIP (vazio = sem limite)', valor: String(coluna.limite_wip ?? ''), inputmode: 'numeric' },
+      { rotulo: 'Política de entrada (ex.: "Só entra com critério de aceite claro"; vazio = sem política)',
+        valor: coluna.politica ?? '', multilinha: true },
+    ],
+    botaoOk: 'Salvar',
+    validar: ([digitado]) => lerLimiteWip(digitado).erros,
+  });
+  if (valores === null) return; // clicou em Cancelar
+  const [digitado, politica] = valores;
+  const { limite } = lerLimiteWip(digitado); // já conferido no validar
 
   const { error } = await supabase.from('colunas')
     .update({ limite_wip: limite, politica: lerPolitica(politica) }).eq('id', coluna.id);
@@ -591,25 +661,25 @@ async function editarWipEPolitica(coluna) {
  * @param {{id: string, nome: string, limite_wip: number|null, politica: string|null}} destino
  * @param {string} deColunaId coluna onde o cartão está agora
  * @param {number} quantidadeNoDestino cartões que já estão no destino
- * @returns {{pode: boolean, justificativa: string|null}} pode = false quando a pessoa desistiu
+ * @returns {Promise<{pode: boolean, justificativa: string|null}>} pode = false quando a pessoa desistiu
  */
-function pedirJustificativaSePreciso(destino, deColunaId, quantidadeNoDestino) {
+async function pedirJustificativaSePreciso(destino, deColunaId, quantidadeNoDestino) {
   const paraColuna = { id: destino.id, limiteWip: destino.limite_wip };
   const { cheia, texto } = situacaoWip(paraColuna, quantidadeNoDestino);
   if (!cheia) return { pode: true, justificativa: null }; // cabe (ou não tem limite): não pergunta nada
 
   const politica = destino.politica ? `\nPolítica da coluna: ${destino.politica}` : '';
-  const justificativa = prompt(
-    `A coluna "${destino.nome}" está no limite de WIP (${texto}).${politica}\n`
-    + 'Para mover mesmo assim, escreva a justificativa (o Scrum Master vai ver):',
-  );
-  if (justificativa === null) return { pode: false, justificativa: null }; // Cancelar
-  const erros = validarMovimento({ deColunaId, paraColuna, quantidadeNoDestino, justificativa });
-  if (erros.length > 0) {
-    mostrarMensagem(erros.join(' '));
-    return { pode: false, justificativa: null };
-  }
-  return { pode: true, justificativa: justificativa.trim() };
+  // validarMovimento (regras.js) é a mesma regra da mover_cartao: justificativa vazia ou só com
+  // espaços não passa. O erro aparece na caixa, e a pessoa pode escrever ou cancelar.
+  const valores = await perguntar({
+    titulo: 'Coluna no limite de WIP',
+    texto: `A coluna "${destino.nome}" está no limite de WIP (${texto}).${politica}`,
+    campos: [{ rotulo: 'Para mover mesmo assim, escreva a justificativa (o Scrum Master vai ver)', multilinha: true }],
+    botaoOk: 'Mover mesmo assim',
+    validar: ([justificativa]) => validarMovimento({ deColunaId, paraColuna, quantidadeNoDestino, justificativa }),
+  });
+  if (valores === null) return { pode: false, justificativa: null }; // Cancelar
+  return { pode: true, justificativa: valores[0].trim() };
 }
 
 /**
@@ -675,9 +745,13 @@ async function excluirColuna(coluna, quantidadeCartoes) {
     mostrarMensagem(erros.join(' '));
     return;
   }
-  if (!confirm(`Excluir a coluna "${coluna.nome}"? O histórico dos cartões que passaram por ela continua guardado.`)) {
-    return;
-  }
+  const confirmou = await perguntar({
+    titulo: `Excluir a coluna "${coluna.nome}"?`,
+    texto: 'O histórico dos cartões que passaram por ela continua guardado.',
+    campos: [],
+    botaoOk: 'Excluir',
+  });
+  if (confirmou === null) return; // Cancelar
   // arquivar_coluna confere de novo no banco (pode ter entrado um cartão nesse meio-tempo).
   const { error } = await supabase.rpc('arquivar_coluna', { p_coluna: coluna.id });
   if (error) {

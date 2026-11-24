@@ -167,6 +167,22 @@
     </section>
   </main>
 
+  <!-- Caixa de diálogo usada no lugar do prompt() e do confirm() do navegador (função perguntar,
+       app.js): renomear coluna, WIP e política, justificativa de WIP e excluir coluna.
+       O erro aparece dentro da caixa, junto do campo, e a caixa só fecha quando o valor está certo. -->
+  <dialog id="dialogo" aria-labelledby="dialogo-titulo">
+    <form id="dialogo-form" class="formulario" novalidate>
+      <h2 id="dialogo-titulo"></h2>
+      <p id="dialogo-texto"></p>
+      <div id="dialogo-campos" class="dialogo-campos"></div>
+      <p id="dialogo-erro" class="dialogo-erro" role="alert"></p>
+      <div class="dialogo-botoes">
+        <button id="dialogo-cancelar" type="button">Cancelar</button>
+        <button id="dialogo-ok" type="submit">OK</button>
+      </div>
+    </form>
+  </dialog>
+
   <script type="module" src="js/app.js"></script>
 </body>
 </html>
