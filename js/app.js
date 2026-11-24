@@ -1012,7 +1012,14 @@ function desenharCfd() {
     return;
   }
 
-  const r = cfd({ movimentos: dadosDoFluxo.movimentos, colunas: dadosDoFluxo.colunas, de, ate });
+  const r = cfd({
+    movimentos: dadosDoFluxo.movimentos, colunas: dadosDoFluxo.colunas, de, ate,
+    hoje: diaEmSaoPaulo(new Date().toISOString()), // dias depois de hoje ficam de fora (revisão do PR #22)
+  });
+  if (r.dias.length === 0) {
+    limparCfd('O período escolhido ainda não começou: escolha um "De" até hoje.');
+    return;
+  }
   cfdNaTela = { r, de, ate };
 
   const ultimo = r.dias.at(-1);
@@ -1044,11 +1051,14 @@ function desenharCfd() {
 // Critério 4: baixar os dados do gráfico em CSV, gerado no navegador (sem servidor).
 $('#baixar-cfd').addEventListener('click', () => {
   if (!cfdNaTela) return;
-  // O "﻿" no começo (BOM) avisa ao Excel que o texto é UTF-8; sem ele, "Concluído" vira "ConcluÃ­do".
-  const arquivo = new Blob(['﻿', cfdParaCsv(cfdNaTela.r)], { type: 'text/csv;charset=utf-8' });
+  // O "\uFEFF" no começo (BOM) avisa ao Excel que o texto é UTF-8; sem ele, "Concluído" vira "ConcluÃ­do".
+  const arquivo = new Blob(['\uFEFF', cfdParaCsv(cfdNaTela.r)], { type: 'text/csv;charset=utf-8' });
   const link = document.createElement('a');
   link.href = URL.createObjectURL(arquivo);
-  link.download = `cfd-${cfdNaTela.de}-a-${cfdNaTela.ate}.csv`; // só datas: o nome do board fica de fora
+  // Só datas (o nome do board fica de fora): o primeiro e o último dia que estão no arquivo,
+  // porque o "Até" escolhido pode estar no futuro e os dias depois de hoje são cortados.
+  const { dias } = cfdNaTela.r;
+  link.download = `cfd-${dias[0].dia}-a-${dias.at(-1).dia}.csv`;
   link.click();
   setTimeout(() => URL.revokeObjectURL(link.href), 1000); // libera a memória depois que o download começou
 });

@@ -890,7 +890,8 @@ describe('cfd', () => {
     m('B', 'c-velha', 'c-fazendo', '2026-11-18T13:00:00Z'),
     m('C', null, 'c-backlog', '2026-11-18T12:00:00Z'),
   ];
-  const r = cfd({ movimentos, colunas, de: '2026-11-16', ate: '2026-11-18' });
+  const hoje = '2026-11-30'; // depois de todas as datas do exemplo: nenhum dia é cortado
+  const r = cfd({ movimentos, colunas, de: '2026-11-16', ate: '2026-11-18', hoje });
 
   it('segue a ordem das colunas do board e só traz arquivada que teve cartão no período', () => {
     expect(r.colunas).toEqual([
@@ -908,9 +909,23 @@ describe('cfd', () => {
   });
 
   it('período de um dia só e período inválido', () => {
-    expect(cfd({ movimentos, colunas, de: '2026-11-17', ate: '2026-11-17' }).dias)
+    expect(cfd({ movimentos, colunas, de: '2026-11-17', ate: '2026-11-17', hoje }).dias)
       .toEqual([{ dia: '2026-11-17', quantidades: [0, 0, 1, 1] }]);
-    expect(() => cfd({ movimentos, colunas, de: '2026-11-18', ate: '2026-11-16' })).toThrow('período válido');
+    expect(() => cfd({ movimentos, colunas, de: '2026-11-18', ate: '2026-11-16', hoje })).toThrow('período válido');
+  });
+
+  // Revisão do Kauan no PR #22: "Até" no futuro repetia o estado de hoje nos dias que ainda não chegaram.
+  it('corta os dias depois de hoje (o gráfico e o CSV terminam hoje)', () => {
+    expect(cfd({ movimentos, colunas, de: '2026-11-16', ate: '2026-11-20', hoje: '2026-11-17' }).dias).toEqual([
+      { dia: '2026-11-16', quantidades: [1, 0, 0, 1] },
+      { dia: '2026-11-17', quantidades: [0, 0, 1, 1] },
+    ]);
+  });
+
+  it('período todo no futuro: nenhum dia (e nenhuma coluna arquivada)', () => {
+    const futuro = cfd({ movimentos, colunas, de: '2026-11-19', ate: '2026-11-20', hoje: '2026-11-18' });
+    expect(futuro.dias).toEqual([]);
+    expect(futuro.colunas.map((c) => c.id)).toEqual(['c-backlog', 'c-fazendo', 'c-pronto']);
   });
 });
 
@@ -925,5 +940,11 @@ describe('cfdParaCsv', () => {
     const r = { colunas: [{ id: 'a', nome: 'A;B' }, { id: 'b', nome: 'Diz "oi"' }, { id: 'c', nome: '=SOMA(1)' }],
       dias: [] };
     expect(cfdParaCsv(r)).toBe('Dia;"A;B";"Diz ""oi""";\'=SOMA(1)\r\n');
+  });
+
+  // Revisão do Kauan no PR #22: a OWASP também lista o tab e o \r no começo da célula.
+  it('nome começando com tab ou \\r também ganha o apóstrofo (e o \\r ainda vai entre aspas)', () => {
+    const r = { colunas: [{ id: 'a', nome: '\tA' }, { id: 'b', nome: '\rB' }], dias: [] };
+    expect(cfdParaCsv(r)).toBe('Dia;\'\tA;"\'\rB"\r\n');
   });
 });

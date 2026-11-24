@@ -576,20 +576,25 @@ export function burndown({ cartoes, movimentos, colunas, inicio, fim, hoje }) {
 // Cada cartão está na coluna do seu último movimento até aquele dia; cartão que ainda não existia
 // não conta. As faixas seguem a ordem das colunas do board (posicao). Coluna arquivada só entra se
 // teve cartão no período (para o gráfico não esconder trabalho que passou por ela).
+// Dias depois de hoje ficam de fora: eles ainda não têm fim, e repetir o estado de hoje neles
+// pareceria trabalho parado (decisão do PO na revisão do PR #22).
 
 /**
  * @param {{movimentos: {cartao_id: string, para_coluna_id: string, movido_em: string, id: number}[],
  *          colunas: {id: string, nome: string, posicao: number, arquivada?: boolean}[],
- *          de: string, ate: string}} dados de/ate = "AAAA-MM-DD", inclusive
+ *          de: string, ate: string, hoje: string}} dados datas "AAAA-MM-DD", de/ate inclusive;
+ *   hoje vem de fora para o teste ser sempre igual (como no burndown)
  * @returns {{colunas: {id: string, nome: string}[], dias: {dia: string, quantidades: number[]}[]}}
- *   quantidades[i] = cartões na colunas[i] no fim daquele dia
+ *   quantidades[i] = cartões na colunas[i] no fim daquele dia; dias vazio se o período ainda não começou
  */
-export function cfd({ movimentos, colunas, de, ate }) {
+export function cfd({ movimentos, colunas, de, ate, hoje }) {
   const erroNoPeriodo = validarPeriodo(de, ate);
   if (erroNoPeriodo) throw new Error(erroNoPeriodo);
 
-  // Todos os dias do período, do "de" ao "ate" (a mesma lista de dias do burndown, história 6).
-  const dias = diasDaSprint(de, ate);
+  // Todos os dias do período, do "de" até o "ate" ou até hoje, o que vier antes
+  // (a mesma lista de dias do burndown, história 6). Se o "de" for depois de hoje, a lista fica vazia.
+  const ultimoDia = ate < hoje ? ate : hoje;
+  const dias = diasDaSprint(de, ultimoDia);
 
   // No fim de cada dia: cartão → coluna do último movimento dele até ali.
   const ordem = emOrdem(movimentos);
@@ -616,12 +621,13 @@ export function cfd({ movimentos, colunas, de, ate }) {
  * Texto do CSV do CFD (história 7): "Dia;Coluna 1;Coluna 2..." e uma linha por dia (dd/mm/aaaa).
  * Separado por ";" porque o Excel em português usa a vírgula como separador decimal.
  * Nome de coluna é texto do usuário: com ";", aspas ou quebra de linha vai entre aspas (aspas dobradas);
- * se começar com = + - @, ganha um apóstrofo na frente, para o Excel não rodar como fórmula.
+ * se começar com = + - @, tab ou \r (a lista da OWASP), ganha um apóstrofo na frente, para o Excel
+ * não rodar como fórmula.
  * @param {{colunas: {nome: string}[], dias: {dia: string, quantidades: number[]}[]}} resultado do cfd
  */
 export function cfdParaCsv({ colunas, dias }) {
   const celula = (texto) => {
-    let t = /^[=+\-@]/.test(texto) ? `'${texto}` : texto;
+    let t = /^[=+\-@\t\r]/.test(texto) ? `'${texto}` : texto;
     if (/[;"\r\n]/.test(t)) t = `"${t.replace(/"/g, '""')}"`;
     return t;
   };
