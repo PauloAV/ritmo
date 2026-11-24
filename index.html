@@ -112,6 +112,37 @@
           <table id="tabela-throughput" aria-label="Throughput por semana"></table>
         </div>
       </section>
+      <!-- História 6: burndown da Sprint (contas em burndown, regras.js) -->
+      <section class="metricas sprints" aria-labelledby="titulo-sprints">
+        <h3 id="titulo-sprints">Burndown da Sprint</h3>
+        <p class="definicoes">
+          <strong>Real</strong>: pontos dos cartões da Sprint que não estavam em Concluído no fim de cada
+          dia (horário de São Paulo). Cartão que sai de Concluído volta a contar.
+          <strong>Ideal</strong>: linha reta do total de pontos, no primeiro dia, até zero, no último.
+          Vale a coluna marcada como fim do fluxo, mesmo que o time mude o nome dela.
+        </p>
+        <form id="form-sprint" class="formulario form-sprint" novalidate>
+          <div class="formulario em-linha">
+            <label>Nova Sprint <input id="nome-sprint" type="text"></label>
+            <label>Início <input id="inicio-sprint" type="date"></label>
+            <label>Fim <input id="fim-sprint" type="date"></label>
+          </div>
+          <fieldset class="escolha-cartoes">
+            <legend>Cartões da Sprint</legend>
+            <div id="cartoes-para-sprint"></div>
+          </fieldset>
+          <button type="submit">Criar Sprint</button>
+        </form>
+        <div class="formulario em-linha">
+          <label>Sprint <select id="sprint-escolhida"></select></label>
+        </div>
+        <p id="resumo-burndown" class="resumo-metricas" aria-live="polite"></p>
+        <p id="aviso-sem-pontos" class="aviso-pontos" role="status"></p>
+        <div id="grafico-burndown"></div>
+        <div class="tabela-rolavel">
+          <table id="tabela-burndown" aria-label="Pontos restantes por dia: ideal e real"></table>
+        </div>
+      </section>
       <section class="passagens" aria-labelledby="titulo-passagens">
         <h3 id="titulo-passagens">Passagens do limite de WIP (para o Scrum Master)</h3>
         <ul id="lista-passagens" class="lista-passagens"></ul>

@@ -8,7 +8,9 @@ import {
   normalizarCodigo, validarCodigoConvite, nomesDosMembros,
   validarCartao, colunaVizinha, formatarDataHora, montarHistorico, movimentoParaDesfazer,
   diaEmSaoPaulo, segundaDaSemana, diasEntre, datasDoFluxo, metricasDoFluxo, formatarDias, periodoPadrao,
-  validarPeriodo, cfd, cfdParaCsv,
+  validarPeriodo,
+  validarSprint, diasDaSprint, burndown,
+  cfd, cfdParaCsv,
 } from '../js/regras.js';
 
 // Dados fictícios: nada de nome, e-mail ou dado real nos testes.
@@ -755,6 +757,107 @@ describe('periodoPadrao', () => {
   it('usa o dia de São Paulo: segunda 01h UTC ainda é domingo em SP', () => {
     // 23/11 01:00 UTC = 22/11 22:00 em SP (domingo) → semana de 16/11
     expect(periodoPadrao('2026-11-23T01:00:00Z')).toEqual({ de: '2026-10-26', ate: '2026-11-22' });
+  });
+});
+
+// ---------- História 6: Burndown da Sprint ----------
+
+describe('validarSprint', () => {
+  const certa = { nome: 'Sprint 2', inicio: '2026-11-17', fim: '2026-11-24', cartoes: ['A'] };
+
+  it('aceita nome, início, fim (no mesmo dia ou depois) e pelo menos um cartão', () => {
+    expect(validarSprint(certa)).toEqual([]);
+    expect(validarSprint({ ...certa, fim: '2026-11-17' })).toEqual([]); // Sprint de um dia
+  });
+
+  it('recusa nome vazio, data faltando, fim antes do início e Sprint sem cartões', () => {
+    expect(validarSprint({ ...certa, nome: '   ' })).toEqual(['O nome da Sprint é obrigatório.']);
+    expect(validarSprint({ ...certa, inicio: '' })).toEqual(['Escolha a data de início e a de fim da Sprint.']);
+    expect(validarSprint({ ...certa, fim: '2026-11-16' }))
+      .toEqual(['A data de fim não pode ser antes da data de início.']);
+    expect(validarSprint({ ...certa, cartoes: [] })).toEqual(['Escolha pelo menos um cartão para a Sprint.']);
+  });
+
+  // Regra 2 do CLAUDE.md: o banco tem o mesmo check de nome e de datas.
+  it('o schema.sql tem os mesmos checks na tabela sprints', () => {
+    const sql = readFileSync(new URL('../supabase/schema.sql', import.meta.url), 'utf8');
+    expect(sql).toContain('nome       text not null check (length(trim(nome)) > 0)');
+    expect(sql).toContain('check (fim >= inicio)');
+    // A criar_sprint recusa a Sprint sem cartões com a mesma mensagem.
+    expect(sql).toContain("raise exception 'Escolha pelo menos um cartão para a Sprint.'");
+  });
+});
+
+describe('diasDaSprint', () => {
+  it('lista todos os dias, do início ao fim, inclusive os dois', () => {
+    expect(diasDaSprint('2026-11-16', '2026-11-20'))
+      .toEqual(['2026-11-16', '2026-11-17', '2026-11-18', '2026-11-19', '2026-11-20']);
+    expect(diasDaSprint('2026-11-30', '2026-12-01')).toEqual(['2026-11-30', '2026-12-01']); // virada do mês
+    expect(diasDaSprint('2026-11-17', '2026-11-17')).toEqual(['2026-11-17']);
+  });
+});
+
+describe('burndown', () => {
+  // Exemplo feito à mão. Sprint de 16/11 (segunda) a 20/11 (sexta); hoje = 19/11.
+  // Horários em UTC no banco; São Paulo = UTC-3.
+  //   X (5 pontos): concluído 17/11 15h UTC (12h em SP)
+  //   Y (3 pontos): concluído 18/11 13h UTC; VOLTOU para "Fazendo" 19/11 13h UTC (critério 3)
+  //   Z (2 pontos): concluído 19/11 02h30 UTC = 18/11 23h30 em SP → conta no dia 18
+  //   W (sem pontos): concluído 16/11; conta 0 e aparece no aviso (critério 4)
+  // Total = 5 + 3 + 2 = 10.
+  //   Real (no fim de cada dia): 16 → 10 · 17 → 10−5 = 5 · 18 → 5−3−2 = 0 · 19 → 0+3 = 3 · 20 → ainda não chegou
+  //   Ideal = 10 × (1 − i/4), i = 0..4: 10 · 7,5 · 5 · 2,5 · 0
+  const cartoesDaSprint = [
+    { id: 'X', titulo: 'Cartão X', pontos: 5 },
+    { id: 'Y', titulo: 'Cartão Y', pontos: 3 },
+    { id: 'Z', titulo: 'Cartão Z', pontos: 2 },
+    { id: 'W', titulo: 'Cartão W', pontos: null },
+  ];
+  const movs = [
+    m('X', null, 'c-entrada', '2026-11-10T12:00:00Z'),
+    m('Y', null, 'c-entrada', '2026-11-10T12:00:00Z'),
+    m('Z', null, 'c-entrada', '2026-11-10T12:00:00Z'),
+    m('W', null, 'c-entrada', '2026-11-10T12:00:00Z'),
+    m('W', 'c-entrada', 'c-pronto', '2026-11-16T15:00:00Z'),
+    m('X', 'c-entrada', 'c-pronto', '2026-11-17T15:00:00Z'),
+    m('Y', 'c-entrada', 'c-pronto', '2026-11-18T13:00:00Z'),
+    m('Z', 'c-entrada', 'c-pronto', '2026-11-19T02:30:00Z'),
+    m('Y', 'c-pronto', 'c-fazendo', '2026-11-19T13:00:00Z'),
+  ];
+  const sprint = { inicio: '2026-11-16', fim: '2026-11-20' };
+  const r = burndown({ cartoes: cartoesDaSprint, movimentos: movs, colunas: colunasDoFluxo, ...sprint, hoje: '2026-11-19' });
+
+  it('bate com o exemplo feito à mão: real e ideal de cada dia', () => {
+    expect(r.total).toBe(10);
+    expect(r.dias).toEqual([
+      { dia: '2026-11-16', ideal: 10, real: 10 },
+      { dia: '2026-11-17', ideal: 7.5, real: 5 },
+      { dia: '2026-11-18', ideal: 5, real: 0 },
+      { dia: '2026-11-19', ideal: 2.5, real: 3 }, // Y saiu de Concluído: volta a contar
+      { dia: '2026-11-20', ideal: 0, real: null }, // dia que ainda não chegou: sem valor real
+    ]);
+  });
+
+  it('avisa os cartões sem pontos, para o time estimar', () => {
+    expect(r.semPontos).toEqual([{ id: 'W', titulo: 'Cartão W' }]);
+  });
+
+  it('dá o mesmo resultado se o time renomear as colunas (usa o papel)', () => {
+    const renomeadas = colunasDoFluxo.map((c) => ({ ...c, nome: `Outro nome ${c.id}` }));
+    expect(burndown({ cartoes: cartoesDaSprint, movimentos: movs, colunas: renomeadas, ...sprint, hoje: '2026-11-19' }))
+      .toEqual(r);
+  });
+
+  it('ignora movimentos de cartões que não estão na Sprint', () => {
+    const comOutro = [...movs, m('FORA', null, 'c-entrada', '2026-11-16T12:00:00Z')];
+    expect(burndown({ cartoes: cartoesDaSprint, movimentos: comOutro, colunas: colunasDoFluxo, ...sprint, hoje: '2026-11-19' }))
+      .toEqual(r);
+  });
+
+  it('Sprint de um dia: a linha ideal já termina em zero (sem dividir por zero)', () => {
+    const umDia = burndown({ cartoes: cartoesDaSprint, movimentos: movs, colunas: colunasDoFluxo,
+      inicio: '2026-11-17', fim: '2026-11-17', hoje: '2026-11-19' });
+    expect(umDia.dias).toEqual([{ dia: '2026-11-17', ideal: 0, real: 5 }]);
   });
 });
 
