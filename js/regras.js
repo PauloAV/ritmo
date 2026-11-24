@@ -588,12 +588,8 @@ export function cfd({ movimentos, colunas, de, ate }) {
   const erroNoPeriodo = validarPeriodo(de, ate);
   if (erroNoPeriodo) throw new Error(erroNoPeriodo);
 
-  // Todos os dias do período, do "de" ao "ate".
-  const dias = [];
-  for (let dia = de; dia <= ate;
-    dia = new Date(Date.parse(`${dia}T00:00:00Z`) + UM_DIA).toISOString().slice(0, 10)) {
-    dias.push(dia);
-  }
+  // Todos os dias do período, do "de" ao "ate" (a mesma lista de dias do burndown, história 6).
+  const dias = diasDaSprint(de, ate);
 
   // No fim de cada dia: cartão → coluna do último movimento dele até ali.
   const ordem = emOrdem(movimentos);
