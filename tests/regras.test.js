@@ -8,6 +8,7 @@ import {
   normalizarCodigo, validarCodigoConvite, nomesDosMembros,
   validarCartao, colunaVizinha, formatarDataHora, montarHistorico, movimentoParaDesfazer,
   diaEmSaoPaulo, segundaDaSemana, diasEntre, datasDoFluxo, metricasDoFluxo, formatarDias, periodoPadrao,
+  validarPeriodo,
   validarSprint, diasDaSprint, burndown,
 } from '../js/regras.js';
 
@@ -712,6 +713,27 @@ describe('metricasDoFluxo', () => {
   it('dá o mesmo resultado se o time renomear as colunas (as métricas usam o papel)', () => {
     const renomeadas = colunasDoFluxo.map((c) => ({ ...c, nome: `Outro nome ${c.id}` }));
     expect(metricasDoFluxo({ cartoes, movimentos, colunas: renomeadas, ...periodo })).toEqual(r);
+  });
+
+  it('recusa período com "de" depois de "ate" (antes dava throughput médio NaN, 0 ÷ 0 semanas)', () => {
+    expect(() => metricasDoFluxo({ cartoes, movimentos, colunas: colunasDoFluxo, de: '2026-11-30', ate: '2026-11-09' }))
+      .toThrow('Escolha um período válido: a data inicial não pode ser depois da final.');
+    // Mesma semana, mas invertido: também é recusado (antes mostrava uma semana com zero).
+    expect(() => metricasDoFluxo({ cartoes, movimentos, colunas: colunasDoFluxo, de: '2026-11-19', ate: '2026-11-17' }))
+      .toThrow('período válido');
+  });
+});
+
+describe('validarPeriodo', () => {
+  const mensagem = 'Escolha um período válido: a data inicial não pode ser depois da final.';
+  it('aceita "de" antes de "ate" ou no mesmo dia', () => {
+    expect(validarPeriodo('2026-11-09', '2026-11-22')).toBeNull();
+    expect(validarPeriodo('2026-11-19', '2026-11-19')).toBeNull();
+  });
+  it('recusa data vazia e "de" depois de "ate"', () => {
+    expect(validarPeriodo('', '2026-11-22')).toBe(mensagem);
+    expect(validarPeriodo('2026-11-09', '')).toBe(mensagem);
+    expect(validarPeriodo('2026-11-23', '2026-11-22')).toBe(mensagem);
   });
 });
 

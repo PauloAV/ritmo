@@ -432,6 +432,10 @@ export function datasDoFluxo(movimentos, colunas) {
  *   throughputMedio = concluídos no período ÷ número de semanas da lista
  */
 export function metricasDoFluxo({ cartoes, movimentos, colunas, de, ate }) {
+  // Sem esta conferência, "de" depois de "ate" dava zero semanas e throughputMedio = 0 ÷ 0 = NaN.
+  const erroNoPeriodo = validarPeriodo(de, ate);
+  if (erroNoPeriodo) throw new Error(erroNoPeriodo);
+
   const concluidos = [];
   for (const cartao of cartoes) {
     const doCartao = movimentos.filter((mov) => mov.cartao_id === cartao.id);
@@ -467,6 +471,16 @@ export function metricasDoFluxo({ cartoes, movimentos, colunas, de, ate }) {
     throughput,
     throughputMedio: concluidos.length / throughput.length,
   };
+}
+
+/**
+ * Confere o período escolhido nas métricas. Datas "AAAA-MM-DD"; nesse formato, comparar os textos
+ * é o mesmo que comparar as datas. O mesmo dia nas duas pontas vale (período de um dia).
+ * @returns {string|null} a mensagem de erro, ou null se o período está certo
+ */
+export function validarPeriodo(de, ate) {
+  if (!de || !ate || de > ate) return 'Escolha um período válido: a data inicial não pode ser depois da final.';
+  return null;
 }
 
 const formatoUmaCasa = new Intl.NumberFormat('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
