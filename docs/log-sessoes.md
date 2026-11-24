@@ -366,3 +366,79 @@ Contas `teste<número>h4@teste.com` (Ana Teste), boards "Board H4 Teste" e cart�
    - filtrar os movimentos pelo board;
    - testes do banco e `reordenar_colunas`.
 6. **Backlog (decisão do PO):** "arrastar com o mouse" e "editar cartão". No "editar cartão", tratar o responsável que saiu do board.
+
+---
+
+## 19 a 24/11/2026 · Paulo · Sprint 2 · H5, revisões do Kauan e início da H7
+
+### O que foi feito
+1. **PR #17 (métricas da Sprint 1):** o Kauan revisou e refez as contas à mão.
+   - Os ajustes pedidos foram feitos no `6df7ae8`: pendências do log marcadas como feitas, `status` ordenado por data no script e rótulo do CFD em duas variáveis com nome. Os gráficos e os números não mudaram.
+   - Ele aprovou e mesclou em 19/11.
+2. **H5 (#5), Lead Time, Cycle Time e Throughput, com TDD.** Branch `historia-5-lead-cycle-throughput`, **PR #18**:
+   - **a Action do board funcionou sozinha pela primeira vez** (token novo): a #5 foi para "Em andamento" com Início 19/11;
+   - regras `diaEmSaoPaulo`, `segundaDaSemana`, `diasEntre`, `datasDoFluxo`, `metricasDoFluxo`, `formatarDias` e `periodoPadrao`, com 16 testes, a conta feita à mão no comentário e um teste de colunas renomeadas;
+   - seção "Métricas do fluxo" na tela;
+   - a busca dos movimentos passou a filtrar pelo board (`cartoes!inner`), como o Kauan sugeriu no #15;
+   - o teste no navegador achou **2 erros da IA**, corrigidos: o throughput aparecia arredondado ("0,3" em vez de 0,25) e o texto das definições dependia do nome das colunas;
+   - o Kauan revisou e mesclou em 20/11.
+3. **Entrega de 19/11 para o professor:** print do board (página pública do GitHub Projects) e o texto "pronto / em andamento / o que travou", reescrito para ficar com a nossa voz.
+4. **24/11: revisão dos 3 PRs abertos do Kauan** (`/revisar-dod`, testes numa cópia de cada PR):
+   - **#20** (recusar período com "de" depois de "ate"; corrigia um `NaN` da H5): aprovado e **mesclado** (`8f040d6`);
+   - **#21** (H6, burndown): aprovado, com as 5 decisões do PO confirmadas (abaixo);
+   - **#19** (log e registro do Kauan): conteúdo certo, mas com conflito; foi pedido que ele atualize a branch.
+5. **H7 (#7), CFD: começou.** Branch `historia-7-cfd`; a Action gravou o Início 24/11.
+   - As regras `cfd` e `cfdParaCsv` estão prontas, com 5 testes (98 no total), no commit `92ec5f9`.
+   - **A tela ainda não foi feita:** ela espera o merge do #21, para reaproveitar o gráfico em SVG da H6.
+
+### Decisões do PO
+- **H5:**
+  - só conta como concluído quem **está** na coluna de fim, e vale a **última** entrada;
+  - cartão sem passagem pelo início fica com Cycle Time "—", fora da média;
+  - dias com uma casa decimal, contados da hora exata;
+  - semana de segunda a domingo, com período padrão de 4 semanas;
+  - entram os cartões concluídos no período.
+- **Depois do #20:** mantidas a uma casa decimal e a semana incompleta nas pontas do período (o período padrão começa numa segunda, então só a última semana fica incompleta).
+- **H6:**
+  - vale a lista **atual** de cartões da Sprint;
+  - cartão sem pontos conta 0 e aparece no aviso;
+  - o dia termina à meia-noite de São Paulo;
+  - vale o valor atual dos pontos;
+  - Sprint não pode ser apagada.
+- **H7:**
+  - o CFD usa o mesmo período (De/Até) das métricas da H5;
+  - coluna arquivada só entra se teve cartão no período;
+  - CSV com `;`, datas em dd/mm/aaaa e apóstrofo antes de `=`, `+`, `-` e `@`;
+  - da 9ª coluna em diante, cinza, com o nome escrito.
+- **Combinado do time:** toda mudança passa por PR, até as pequenas. O `a34c867` (links do README) foi direto na `main`.
+
+### Cuidados
+- **No Git Bash daqui, o heredoc com Python pode comer as barras invertidas.** Um `\r\n` dentro do texto virou quebra de linha de verdade e quebrou o arquivo de testes da H7 (erro da IA, corrigido antes do commit). Para script com `\`, gravar um arquivo `.py` e rodar dali.
+- **Rodar o script de métricas regrava os SVGs com LF.** Se o conteúdo não mudou, restaurar com `git checkout -- <arquivo>`.
+- **O `npm run dev` "parado" por falta de memória continua rodando.** Conferir a porta 8080 e encerrar o `http-server`.
+
+### Estado ao fim da sessão
+- **`main`:** H1 a H5, as métricas da Sprint 1 e o ajuste do período (#20).
+- **PRs abertos:**
+  - **#19** (log do Kauan): com conflito;
+  - **#21** (H6): aprovado, com conflito na seção "## Sprint 2" do registro.
+- **H7:** regras prontas na `historia-7-cfd`, sem PR.
+- **A Sprint 2 termina hoje (24/11).** H5 entregue; H6 aprovada e esperando o merge; H7 pela metade.
+
+### Pendências
+1. **Kauan:** resolver o conflito do #19 e do #21, nessa ordem, e mesclar.
+2. **Paulo (com a IA), depois do #21:**
+   - atualizar a `historia-7-cfd` com a `main` e trocar o laço de dias pelo `diasDaSprint` da H6;
+   - fazer a tela do CFD (gráfico, tabela e "Baixar CSV") e testar no navegador;
+   - abrir o PR.
+3. **Registro de Uso da IA:**
+   - mover o registro do Paulo de 19/11 (H5), que ficou embaixo de "Sprint 1", para a seção "Sprint 2";
+   - acrescentar o registro de 24/11: revisões e H7, com o erro das barras invertidas.
+4. **Fechamento da Sprint 2:**
+   - decidir se a H7 passa para a Sprint 3;
+   - métricas da Sprint 2;
+   - Review e Retrospectiva.
+5. **Ainda da Sprint 1:**
+   - decidir o Início da H1 e da H2;
+   - Review e Retrospectiva;
+   - conferir as histórias no Pages.
