@@ -4,6 +4,7 @@
 // História 4: limite de WIP e política por coluna, justificativa ao passar do limite e lista para o SM.
 // História 5: Lead Time, Cycle Time e Throughput do período escolhido, com o valor de cada cartão.
 // História 6: Sprints (datas e cartões escolhidos) e o burndown de cada uma, em SVG feito à mão.
+// História 7: CFD do período das métricas (áreas empilhadas em SVG), com tabela e "Baixar CSV".
 // Segurança: texto digitado pelo usuário entra na página só por textContent (nunca innerHTML),
 // para ninguém conseguir injetar HTML ou script pelo nome de um board ou coluna.
 import { supabase } from './supabase.js';
@@ -15,6 +16,7 @@ import {
   validarCartao, colunaVizinha, montarHistorico, movimentoParaDesfazer,
   metricasDoFluxo, formatarDias, formatarDataHora, periodoPadrao, validarPeriodo,
   validarSprint, burndown, diaEmSaoPaulo,
+  cfd, cfdParaCsv,
 } from './regras.js';
 
 // Campos do board que as telas usam (o código de convite aparece no board, história 2).
@@ -260,6 +262,7 @@ async function abrirBoard(board) {
   dadosDoFluxo = { cartoes: [], movimentos: [], colunas: [] };
   sprintsDoBoard = [];
   cartoesDasSprints = [];
+  limparCfd(); // o CFD do board anterior também não (história 7)
   $('#sprint-escolhida').replaceChildren();
   // desenharColunas desenha também a lista de membros (desenharMembros).
   await Promise.all([desenharColunas(), desenharPassagens(), carregarSprints()]);
@@ -321,6 +324,7 @@ async function desenharColunas() {
   desenharMetricas(); // a cada movimento, as métricas acompanham
   preencherCartoesParaSprint(); // cartão novo já aparece para escolher na Sprint
   desenharBurndown(); // e o burndown também acompanha cada movimento
+  desenharCfd(); // e o CFD (história 7)
   desenharMembros(membros.data, perfis.data);
   preencherResponsaveis(perfis.data);
   const cartoesNa = (idColuna) => cartoes.data.filter((c) => c.coluna_id === idColuna);
@@ -964,6 +968,164 @@ function graficoBurndown(r) {
     elementoSvg('line', { x1: margem.esquerda + 80, x2: margem.esquerda + 104, y1: 14, y2: 14, class: 'linha-ideal' }),
     elementoSvg('text', { x: margem.esquerda + 110, y: 18, class: 'legenda' }, 'Ideal'),
   );
+  return svg;
+}
+
+// ---------- Diagrama de fluxo cumulativo, CFD (história 7) ----------
+// A conta está em cfd (regras.js), com a definição e o teste do exemplo feito à mão; o CSV, em cfdParaCsv.
+// O período é o mesmo das métricas da história 5 (decisão do PO): mudar De/Até redesenha os dois.
+// Movimentos e colunas vêm de dadosDoFluxo (o que o quadro acabou de buscar): sem busca nova.
+
+// Paleta categórica conferida com o validador da skill dataviz (fundo branco): uma cor por coluna,
+// na ordem do board. Da 9ª coluna em diante, cinza (decisão do PO); o nome fica na legenda e na tabela,
+// por isso nenhuma coluna depende só da cor.
+const CORES_CFD = ['#2a78d6', '#eb6834', '#1baf7a', '#eda100', '#e87ba4', '#008300', '#6250d6', '#e34948'];
+const CINZA_CFD = '#8c959f';
+const corDaFaixa = (i) => CORES_CFD[i] ?? CINZA_CFD;
+
+let cfdNaTela = null; // o último CFD desenhado: o "Baixar CSV" baixa exatamente o que está na tela
+
+$('#metricas-de').addEventListener('change', desenharCfd);
+$('#metricas-ate').addEventListener('change', desenharCfd);
+
+/** Apaga o CFD (ao trocar de board ou com período inválido). */
+function limparCfd(textoDoResumo = '') {
+  cfdNaTela = null;
+  $('#resumo-cfd').textContent = textoDoResumo;
+  $('#legenda-cfd').replaceChildren();
+  $('#grafico-cfd').replaceChildren();
+  $('#tabela-cfd').replaceChildren();
+  $('#baixar-cfd').disabled = true;
+}
+
+/** Desenha o resumo, a legenda, o gráfico e a tabela do CFD do período escolhido. */
+function desenharCfd() {
+  const de = $('#metricas-de').value;
+  const ate = $('#metricas-ate').value;
+  const erroNoPeriodo = validarPeriodo(de, ate); // a mesma conferência que a cfd faz
+  if (erroNoPeriodo) {
+    limparCfd(erroNoPeriodo);
+    return;
+  }
+  if (dadosDoFluxo.colunas.length === 0) { // o board ainda está carregando
+    limparCfd();
+    return;
+  }
+
+  const r = cfd({ movimentos: dadosDoFluxo.movimentos, colunas: dadosDoFluxo.colunas, de, ate });
+  cfdNaTela = { r, de, ate };
+
+  const ultimo = r.dias.at(-1);
+  const noBoard = ultimo.quantidades.reduce((soma, q) => soma + q, 0);
+  $('#resumo-cfd').textContent = `${r.dias.length} dia(s) · no fim de ${diaCurto(ultimo.dia)}, `
+    + `${noBoard} cartão(ões) no board`;
+
+  // Legenda: amostra da cor + nome da coluna (textContent: o nome é texto do usuário).
+  $('#legenda-cfd').replaceChildren(...r.colunas.map((c, i) => {
+    const item = document.createElement('li');
+    const amostra = document.createElement('span');
+    amostra.className = 'amostra';
+    amostra.style.background = corDaFaixa(i);
+    const nome = document.createElement('span');
+    nome.textContent = c.nome;
+    item.append(amostra, nome);
+    return item;
+  }));
+
+  $('#grafico-cfd').replaceChildren(graficoCfd(r));
+  // A tabela tem os mesmos números do gráfico (critério 1), para conferir e para leitor de tela.
+  $('#tabela-cfd').replaceChildren(
+    linhaDeTabela('th', ['Dia', ...r.colunas.map((c) => c.nome)]),
+    ...r.dias.map((d) => linhaDeTabela('td', [diaCurto(d.dia), ...d.quantidades.map(String)])),
+  );
+  $('#baixar-cfd').disabled = false;
+}
+
+// Critério 4: baixar os dados do gráfico em CSV, gerado no navegador (sem servidor).
+$('#baixar-cfd').addEventListener('click', () => {
+  if (!cfdNaTela) return;
+  // O "﻿" no começo (BOM) avisa ao Excel que o texto é UTF-8; sem ele, "Concluído" vira "ConcluÃ­do".
+  const arquivo = new Blob(['﻿', cfdParaCsv(cfdNaTela.r)], { type: 'text/csv;charset=utf-8' });
+  const link = document.createElement('a');
+  link.href = URL.createObjectURL(arquivo);
+  link.download = `cfd-${cfdNaTela.de}-a-${cfdNaTela.ate}.csv`; // só datas: o nome do board fica de fora
+  link.click();
+  setTimeout(() => URL.revokeObjectURL(link.href), 1000); // libera a memória depois que o download começou
+});
+
+/**
+ * Gráfico do CFD em SVG feito à mão (sem biblioteca): áreas empilhadas, uma por coluna. A última
+ * coluna do board fica embaixo e a primeira em cima, como no CFD da Sprint 1 (scripts/metricas.mjs).
+ * Passar o mouse num dia mostra quantos cartões havia em cada coluna (o <title> vira a dica).
+ */
+function graficoCfd(r) {
+  // Mesma ideia do burndown: desenha na largura da caixa, para o texto não encolher no celular.
+  const largura = Math.max(320, Math.min(640, $('#grafico-cfd').clientWidth || 640));
+  const altura = 280;
+  const margem = { esquerda: 44, direita: 28, topo: 16, base: 32 }; // 28: o último dd/mm não sai cortado
+  const areaX = largura - margem.esquerda - margem.direita;
+  const areaY = altura - margem.topo - margem.base;
+  const n = r.dias.length;
+  const totalDoDia = (d) => d.quantidades.reduce((soma, q) => soma + q, 0);
+  const maximo = Math.max(1, ...r.dias.map(totalDoDia)); // board vazio: evita dividir por zero
+  // Posição na tela: dia i no eixo x; v cartões no eixo y (0 embaixo, o máximo em cima).
+  const x = (i) => margem.esquerda + (n === 1 ? areaX / 2 : (i * areaX) / (n - 1));
+  const y = (v) => margem.topo + areaY - (v / maximo) * areaY;
+
+  const svg = elementoSvg('svg', {
+    viewBox: `0 0 ${largura} ${altura}`, class: 'grafico', role: 'img',
+    'aria-label': `CFD de ${diaCurto(r.dias[0].dia)} a ${diaCurto(r.dias.at(-1).dia)}. `
+      + 'Os números de cada dia estão na tabela abaixo.',
+  });
+
+  // Grade e números do eixo y (cartões são inteiros): zero, metade e o máximo, sem repetir.
+  for (const v of new Set([0, Math.round(maximo / 2), maximo])) {
+    svg.append(
+      elementoSvg('line', { x1: margem.esquerda, x2: largura - margem.direita, y1: y(v), y2: y(v), class: 'grade' }),
+      elementoSvg('text', { x: margem.esquerda - 8, y: y(v) + 4, 'text-anchor': 'end', class: 'eixo' }, String(v)),
+    );
+  }
+  // Dias no eixo x (dd/mm). Período longo: um rótulo a cada "passo" dias, para não encavalar.
+  // O último dia sempre tem rótulo; por isso, o rótulo regular colado nele fica de fora
+  // (de 02/11 a 24/11, o 23/11 encavalava com o 24/11).
+  const passo = Math.ceil(n / 8);
+  r.dias.forEach((d, i) => {
+    if (i === n - 1 || (i % passo === 0 && n - 1 - i >= passo)) {
+      svg.append(elementoSvg('text', { x: x(i), y: altura - 10, 'text-anchor': 'middle', class: 'eixo' },
+        diaCurto(d.dia).slice(0, 5)));
+    }
+  });
+
+  // Período de um dia só: a área vira uma faixa da largura toda (com um ponto só, não teria largura).
+  const xs = n === 1 ? [margem.esquerda, largura - margem.direita] : r.dias.map((_, i) => x(i));
+  const valoresNosXs = (valores) => (n === 1 ? [valores[0], valores[0]] : valores);
+
+  // Empilha de baixo para cima: começa pela última coluna. "base" é onde a faixa de cada dia começa.
+  let base = r.dias.map(() => 0);
+  for (let c = r.colunas.length - 1; c >= 0; c -= 1) {
+    const topo = r.dias.map((d, i) => base[i] + d.quantidades[c]);
+    if (r.dias.some((d) => d.quantidades[c] > 0)) { // coluna vazia o período todo não tem área
+      const ida = xs.map((px, i) => `${px},${y(valoresNosXs(topo)[i])}`);           // topo, da esquerda para a direita
+      const volta = xs.map((px, i) => `${px},${y(valoresNosXs(base)[i])}`).reverse(); // base, de volta
+      // Contorno branco de 2 px: separa uma faixa da outra.
+      svg.append(elementoSvg('polygon', {
+        points: [...ida, ...volta].join(' '), fill: corDaFaixa(c), stroke: '#fff', 'stroke-width': 2,
+        'stroke-linejoin': 'round',
+      }));
+    }
+    base = topo;
+  }
+
+  // Uma faixa invisível por dia, por cima de tudo: o hover mostra os números daquele dia.
+  const larguraDoDia = n === 1 ? areaX : areaX / (n - 1);
+  r.dias.forEach((d, i) => {
+    const inicio = Math.max(margem.esquerda, (n === 1 ? margem.esquerda : x(i) - larguraDoDia / 2));
+    const fim = Math.min(largura - margem.direita, (n === 1 ? largura - margem.direita : x(i) + larguraDoDia / 2));
+    const faixa = elementoSvg('rect', { x: inicio, y: margem.topo, width: fim - inicio, height: areaY, class: 'dia-cfd' });
+    faixa.append(elementoSvg('title', {}, `${diaCurto(d.dia)}: `
+      + r.colunas.map((c, k) => `${c.nome} ${d.quantidades[k]}`).join(' · ')));
+    svg.append(faixa);
+  });
   return svg;
 }
 
