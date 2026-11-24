@@ -143,6 +143,23 @@
           <table id="tabela-burndown" aria-label="Pontos restantes por dia: ideal e real"></table>
         </div>
       </section>
+      <!-- História 7: diagrama de fluxo cumulativo, CFD (contas em cfd e cfdParaCsv, regras.js) -->
+      <section class="metricas cfd" aria-labelledby="titulo-cfd">
+        <h3 id="titulo-cfd">Fluxo cumulativo (CFD)</h3>
+        <p class="definicoes">
+          Para cada dia, quantos cartões havia em cada coluna no fim do dia (horário de São Paulo),
+          reconstruído a partir do histórico de movimentos. As faixas seguem a ordem das colunas do board:
+          a primeira em cima, a última embaixo. Coluna arquivada só aparece se teve cartão no período.
+          O período é o mesmo das Métricas do fluxo (De e Até, acima); dias depois de hoje ficam de fora.
+        </p>
+        <p id="resumo-cfd" class="resumo-metricas" aria-live="polite"></p>
+        <ul id="legenda-cfd" class="legenda-cfd"></ul>
+        <div id="grafico-cfd"></div>
+        <button id="baixar-cfd" type="button" disabled>Baixar CSV</button>
+        <div class="tabela-rolavel">
+          <table id="tabela-cfd" aria-label="Cartões em cada coluna no fim de cada dia"></table>
+        </div>
+      </section>
       <section class="passagens" aria-labelledby="titulo-passagens">
         <h3 id="titulo-passagens">Passagens do limite de WIP (para o Scrum Master)</h3>
         <ul id="lista-passagens" class="lista-passagens"></ul>

@@ -10,6 +10,7 @@ import {
   diaEmSaoPaulo, segundaDaSemana, diasEntre, datasDoFluxo, metricasDoFluxo, formatarDias, periodoPadrao,
   validarPeriodo,
   validarSprint, diasDaSprint, burndown,
+  cfd, cfdParaCsv,
 } from '../js/regras.js';
 
 // Dados fictícios: nada de nome, e-mail ou dado real nos testes.
@@ -857,5 +858,93 @@ describe('burndown', () => {
     const umDia = burndown({ cartoes: cartoesDaSprint, movimentos: movs, colunas: colunasDoFluxo,
       inicio: '2026-11-17', fim: '2026-11-17', hoje: '2026-11-19' });
     expect(umDia.dias).toEqual([{ dia: '2026-11-17', ideal: 0, real: 5 }]);
+  });
+});
+
+// ---------- História 7: diagrama de fluxo cumulativo (CFD) ----------
+
+describe('cfd', () => {
+  // Colunas fora de ordem de propósito: o CFD segue a posicao, como o board.
+  // "Velha" foi arquivada mas teve cartão no período: entra. "Morta" foi arquivada e não teve: fica de fora.
+  const colunas = [
+    { id: 'c-pronto', nome: 'Pronto', posicao: 3, arquivada: false },
+    { id: 'c-morta', nome: 'Morta', posicao: 5, arquivada: true },
+    { id: 'c-backlog', nome: 'Backlog', posicao: 1, arquivada: false },
+    { id: 'c-velha', nome: 'Velha', posicao: 4, arquivada: true },
+    { id: 'c-fazendo', nome: 'Fazendo', posicao: 2, arquivada: false },
+  ];
+  // Conta à mão (fim de cada dia em São Paulo, UTC-3; vale o último movimento até ali):
+  //   A: criado 16/11 09h SP no Backlog → Fazendo 17/11 09h → Pronto 17/11 23h30 (18/11 02h30 UTC)
+  //   B: criado 16/11 12h no Backlog → Velha 16/11 17h → Fazendo 18/11 10h
+  //   C: criado 18/11 09h no Backlog (não existia nos dias 16 e 17)
+  //            Backlog  Fazendo  Pronto  Velha
+  //   16/11:      1        0       0       1      (A no Backlog, B na Velha)
+  //   17/11:      0        0       1       1      (A chegou no Pronto às 23h30)
+  //   18/11:      1        1       1       0      (B no Fazendo, C no Backlog)
+  const movimentos = [
+    m('A', null, 'c-backlog', '2026-11-16T12:00:00Z'),
+    m('A', 'c-backlog', 'c-fazendo', '2026-11-17T12:00:00Z'),
+    m('A', 'c-fazendo', 'c-pronto', '2026-11-18T02:30:00Z'),
+    m('B', null, 'c-backlog', '2026-11-16T15:00:00Z'),
+    m('B', 'c-backlog', 'c-velha', '2026-11-16T20:00:00Z'),
+    m('B', 'c-velha', 'c-fazendo', '2026-11-18T13:00:00Z'),
+    m('C', null, 'c-backlog', '2026-11-18T12:00:00Z'),
+  ];
+  const hoje = '2026-11-30'; // depois de todas as datas do exemplo: nenhum dia é cortado
+  const r = cfd({ movimentos, colunas, de: '2026-11-16', ate: '2026-11-18', hoje });
+
+  it('segue a ordem das colunas do board e só traz arquivada que teve cartão no período', () => {
+    expect(r.colunas).toEqual([
+      { id: 'c-backlog', nome: 'Backlog' }, { id: 'c-fazendo', nome: 'Fazendo' },
+      { id: 'c-pronto', nome: 'Pronto' }, { id: 'c-velha', nome: 'Velha' },
+    ]);
+  });
+
+  it('conta, no fim de cada dia, quantos cartões havia em cada coluna (exemplo feito à mão)', () => {
+    expect(r.dias).toEqual([
+      { dia: '2026-11-16', quantidades: [1, 0, 0, 1] },
+      { dia: '2026-11-17', quantidades: [0, 0, 1, 1] },
+      { dia: '2026-11-18', quantidades: [1, 1, 1, 0] },
+    ]);
+  });
+
+  it('período de um dia só e período inválido', () => {
+    expect(cfd({ movimentos, colunas, de: '2026-11-17', ate: '2026-11-17', hoje }).dias)
+      .toEqual([{ dia: '2026-11-17', quantidades: [0, 0, 1, 1] }]);
+    expect(() => cfd({ movimentos, colunas, de: '2026-11-18', ate: '2026-11-16', hoje })).toThrow('período válido');
+  });
+
+  // Revisão do Kauan no PR #22: "Até" no futuro repetia o estado de hoje nos dias que ainda não chegaram.
+  it('corta os dias depois de hoje (o gráfico e o CSV terminam hoje)', () => {
+    expect(cfd({ movimentos, colunas, de: '2026-11-16', ate: '2026-11-20', hoje: '2026-11-17' }).dias).toEqual([
+      { dia: '2026-11-16', quantidades: [1, 0, 0, 1] },
+      { dia: '2026-11-17', quantidades: [0, 0, 1, 1] },
+    ]);
+  });
+
+  it('período todo no futuro: nenhum dia (e nenhuma coluna arquivada)', () => {
+    const futuro = cfd({ movimentos, colunas, de: '2026-11-19', ate: '2026-11-20', hoje: '2026-11-18' });
+    expect(futuro.dias).toEqual([]);
+    expect(futuro.colunas.map((c) => c.id)).toEqual(['c-backlog', 'c-fazendo', 'c-pronto']);
+  });
+});
+
+describe('cfdParaCsv', () => {
+  it('uma linha por dia, separada por ";", com a data em dd/mm/aaaa', () => {
+    const r = { colunas: [{ id: 'a', nome: 'Backlog' }, { id: 'b', nome: 'Pronto' }],
+      dias: [{ dia: '2026-11-16', quantidades: [2, 0] }, { dia: '2026-11-17', quantidades: [1, 1] }] };
+    expect(cfdParaCsv(r)).toBe('Dia;Backlog;Pronto\r\n16/11/2026;2;0\r\n17/11/2026;1;1\r\n');
+  });
+
+  it('protege nomes de coluna: ";" e aspas entre aspas, e fórmula do Excel com apóstrofo', () => {
+    const r = { colunas: [{ id: 'a', nome: 'A;B' }, { id: 'b', nome: 'Diz "oi"' }, { id: 'c', nome: '=SOMA(1)' }],
+      dias: [] };
+    expect(cfdParaCsv(r)).toBe('Dia;"A;B";"Diz ""oi""";\'=SOMA(1)\r\n');
+  });
+
+  // Revisão do Kauan no PR #22: a OWASP também lista o tab e o \r no começo da célula.
+  it('nome começando com tab ou \\r também ganha o apóstrofo (e o \\r ainda vai entre aspas)', () => {
+    const r = { colunas: [{ id: 'a', nome: '\tA' }, { id: 'b', nome: '\rB' }], dias: [] };
+    expect(cfdParaCsv(r)).toBe('Dia;\'\tA;"\'\rB"\r\n');
   });
 });
