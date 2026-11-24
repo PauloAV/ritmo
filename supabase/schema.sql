@@ -1,5 +1,5 @@
 -- Ritmo - banco de dados (Supabase / PostgreSQL)
--- Cobre as histórias 1 a 4 da Sprint 1. Rode no Supabase em SQL Editor > New query.
+-- Cobre as histórias 1 a 4 (Sprint 1) e a 6 (Sprint 2). Rode no Supabase em SQL Editor > New query.
 -- Regra de ouro: o histórico de movimentos (tabela movimentos) NUNCA é editado nem apagado.
 -- É dele que saem Lead Time, Cycle Time, Throughput, burndown, CFD e a previsão.
 
@@ -66,6 +66,34 @@ create table public.movimentos (
   movido_por     uuid not null default auth.uid() references auth.users (id),
   movido_em      timestamptz not null default now(),
   justificativa  text   -- preenchida quando o movimento passou do limite de WIP (história 4)
+);
+-- Para sprint_cartoes garantir que o cartão é do mesmo board da Sprint (história 6).
+alter table public.cartoes add unique (board_id, id);
+
+-- Sprints (história 6). inicio e fim são dias do calendário (date, sem hora): o burndown conta os
+-- dias de São Paulo. Os checks de nome e datas são os mesmos de validarSprint (js/regras.js).
+create table public.sprints (
+  id         uuid primary key default gen_random_uuid(),
+  board_id   uuid not null references public.boards (id) on delete cascade,
+  nome       text not null check (length(trim(nome)) > 0),
+  inicio     date not null,
+  fim        date not null,
+  criado_por uuid not null default auth.uid() references auth.users (id),
+  criado_em  timestamptz not null default now(),
+  check (fim >= inicio),
+  unique (board_id, id)
+);
+
+-- Cartões escolhidos para cada Sprint. Tabela de ligação (e não sprint_id no cartão): o cartão
+-- que não fica pronto volta ao backlog e pode entrar na Sprint seguinte sem mudar o burndown da
+-- anterior. O board_id nas duas chaves faz o banco recusar cartão de outro board.
+create table public.sprint_cartoes (
+  sprint_id uuid not null,
+  board_id  uuid not null,
+  cartao_id uuid not null,
+  primary key (sprint_id, cartao_id),
+  foreign key (board_id, sprint_id) references public.sprints (board_id, id) on delete cascade,
+  foreign key (board_id, cartao_id) references public.cartoes (board_id, id) on delete cascade
 );
 
 -- ============ Gatilhos (triggers) ============
@@ -228,6 +256,31 @@ begin
   update public.colunas set arquivada = true where id = v_coluna.id;
 end $$;
 
+-- Cria a Sprint e liga os cartões escolhidos numa transação só (história 6): se uma parte falhar,
+-- nada fica gravado (nunca sobra Sprint sem cartões). Sem security definer: roda com as permissões
+-- de quem chama, e as regras de RLS das duas tabelas continuam valendo.
+-- Mesma mensagem de validarSprint em js/regras.js.
+-- No app: supabase.rpc('criar_sprint', { p_board, p_nome, p_inicio, p_fim, p_cartoes: [ids] })
+create function public.criar_sprint(p_board uuid, p_nome text, p_inicio date, p_fim date, p_cartoes uuid[])
+returns uuid
+language plpgsql set search_path = public as $$
+declare
+  v_sprint uuid;
+begin
+  if coalesce(array_length(p_cartoes, 1), 0) = 0 then
+    raise exception 'Escolha pelo menos um cartão para a Sprint.';
+  end if;
+
+  insert into public.sprints (board_id, nome, inicio, fim)
+  values (p_board, p_nome, p_inicio, p_fim)
+  returning id into v_sprint;
+
+  insert into public.sprint_cartoes (sprint_id, board_id, cartao_id)
+  select v_sprint, p_board, unnest(p_cartoes);
+
+  return v_sprint;
+end $$;
+
 -- ============ Permissões ============
 -- Ninguém muda a coluna de um cartão direto (só por mover_cartao),
 -- e ninguém edita ou apaga movimentos.
@@ -258,6 +311,14 @@ grant update (nome, posicao, limite_wip, politica) on public.colunas to authenti
 revoke insert on public.colunas from anon, authenticated;
 grant insert (board_id, nome, posicao, limite_wip, politica) on public.colunas to authenticated;
 
+-- Sprints (história 6): o membro informa board, nome e datas; depois só muda nome e datas.
+-- Sprint não é apagada: o burndown dela é o registro do que aconteceu.
+revoke insert, update, delete on public.sprints from anon, authenticated;
+grant insert (board_id, nome, inicio, fim) on public.sprints to authenticated;
+grant update (nome, inicio, fim) on public.sprints to authenticated;
+-- Cartões da Sprint: entram e saem (escolher cartões), mas a ligação não é editada.
+revoke update on public.sprint_cartoes from anon, authenticated;
+
 -- ============ Regras de acesso (Row Level Security) ============
 
 alter table public.perfis     enable row level security;
@@ -266,6 +327,8 @@ alter table public.membros    enable row level security;
 alter table public.colunas    enable row level security;
 alter table public.cartoes    enable row level security;
 alter table public.movimentos enable row level security;
+alter table public.sprints        enable row level security;
+alter table public.sprint_cartoes enable row level security;
 
 -- Perfis: vejo o meu e o de quem está em algum board comigo.
 create policy "ver perfis do time" on public.perfis for select to authenticated
@@ -317,3 +380,20 @@ with check (public.eh_membro(board_id) and public.pode_ser_responsavel(board_id,
 create policy "ver historico do time" on public.movimentos for select to authenticated
 using (exists (select 1 from public.cartoes c
                where c.id = cartao_id and public.eh_membro(c.board_id)));
+
+-- Sprints (história 6): membros do board veem, criam e mudam nome e datas. Sem delete.
+create policy "ver sprints do time" on public.sprints for select to authenticated
+using (public.eh_membro(board_id));
+create policy "criar sprint" on public.sprints for insert to authenticated
+with check (public.eh_membro(board_id) and criado_por = auth.uid());
+create policy "editar sprint" on public.sprints for update to authenticated
+using (public.eh_membro(board_id)) with check (public.eh_membro(board_id));
+
+-- Cartões da Sprint: membros do board veem, incluem e tiram. O mesmo board da Sprint e do
+-- cartão é garantido pelas chaves estrangeiras com board_id.
+create policy "ver cartoes da sprint" on public.sprint_cartoes for select to authenticated
+using (public.eh_membro(board_id));
+create policy "incluir cartao na sprint" on public.sprint_cartoes for insert to authenticated
+with check (public.eh_membro(board_id));
+create policy "tirar cartao da sprint" on public.sprint_cartoes for delete to authenticated
+using (public.eh_membro(board_id));

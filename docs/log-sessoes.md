@@ -369,7 +369,7 @@ Contas `teste<número>h4@teste.com` (Ana Teste), boards "Board H4 Teste" e cart�
 
 ---
 
-## 17 a 19/11/2026 · Kauan · Sprint 1 · revisão e merge do PR #17 (métricas da Sprint 1)
+## 17 a 19/11/2026 · Kauan · Sprint 2 · revisão e merge do PR #17 (métricas da Sprint 1)
 
 ### O que foi feito
 1. **1ª revisão do PR #17 pela DoD** (`/revisar-dod`), publicada no PR como comentário, **sem aprovar** (resumo + 3 comentários nas linhas):
@@ -388,7 +388,49 @@ Contas `teste<número>h4@teste.com` (Ana Teste), boards "Board H4 Teste" e cart�
 - Depois de instalar o `gh`, o terminal já aberto não o encontra. Abra um terminal novo ou use `& "C:\Program Files\GitHub CLI\gh.exe"`. O `gh auth login` precisa de um terminal interativo, fora do `!` do Claude Code.
 
 ### Pendências
-1. **Paulo:** revisar e mesclar o PR deste registro de IA e deste log (`registro-ia-revisao-pr17`).
-2. **Antes da Retrospectiva:** decidir juntos o Início da H1 e da H2. Se mudar, coletar os dados de novo e rodar `node scripts/metricas.mjs docs/metricas/sprint-1.json`.
-3. **Sprint Review e Retrospectiva da Sprint 1.**
-4. Conferir H2, H3 e H4 no Pages.
+1. **Antes da Retrospectiva:** decidir juntos o Início da H1 e da H2. Se mudar, coletar os dados de novo e rodar `node scripts/metricas.mjs docs/metricas/sprint-1.json`.
+2. **Sprint Review e Retrospectiva da Sprint 1.**
+3. Conferir H2, H3 e H4 no Pages.
+
+---
+
+## 19/11/2026 · Kauan · Sprint 2 · merge da H5, ajuste do período e H6
+
+### O que foi feito
+1. **PR #18 (H5):** já estava aprovado, mas ficou com conflito em `docs/registro-ia.md` depois do merge do #17. O conflito foi resolvido mantendo as linhas das duas branches, em ordem de data (`28f152a`). Depois, `npm test` (90) e CI passando, e **mesclado** (`9f33a88`). A issue #5 fechou.
+2. **PR #20 (`ajuste-metricas-periodo`):** é a sugestão 2 da revisão da H5. A `validarPeriodo` faz a `metricasDoFluxo` recusar "de" depois de "ate", em vez de devolver throughput médio `NaN`. Também traz o registro da revisão do #18. Está esperando o Paulo.
+3. **H6 (#6) com TDD**, branch `historia-6-burndown`:
+   - regras `validarSprint`, `diasDaSprint` e `burndown`, com exemplo feito à mão (99 testes);
+   - migração **`004-sprints.sql`, rodada no Supabase do time**;
+   - seção "Burndown da Sprint" com gráfico em SVG feito à mão.
+   - Teste no navegador: 40/40.
+4. **Board:** a #6 tinha sido movida à mão para "Em andamento", sem Início. Ela foi devolvida ao Sprint Backlog, e a Action moveu o cartão e gravou o **Início em 19/11**.
+
+### Decisões
+- **Ficam com o PO (Paulo), sem mudança:**
+  - casas decimais da H5 (Cycle médio "1,8" e throughput com 2 casas);
+  - semana incompleta nas pontas do período contando como semana inteira;
+  - a seção da sessão da H5 neste log.
+- **Provisórias da H6, para o Paulo confirmar no PR:**
+  1. vale a lista atual de cartões da Sprint, e a tela só escolhe os cartões ao criar (o banco já deixa incluir e tirar depois);
+  2. cartão sem pontos conta 0 e aparece no aviso;
+  3. o dia termina à meia-noite de São Paulo;
+  4. vale o valor atual dos pontos;
+  5. Sprint não pode ser apagada.
+
+### Cuidados
+- **Na primeira vez, a migração 004 não ficou no projeto do time.** O teste acusou `PGRST202` e `PGRST205`, e ela foi rodada de novo. Depois de rodar uma migração, conferir em *Table Editor* se as tabelas apareceram.
+- **O PR #20 e o PR da H6 criam, cada um, a seção "## Sprint 2"** no `docs/registro-ia.md`. Ao mesclar o segundo, juntar as linhas numa seção só, em ordem de data.
+- **Antes de mesclar um PR já aprovado, conferir de novo se ele pode ser mesclado**, porque outro PR pode ter entrado depois da aprovação.
+
+### Dados fictícios criados (no Supabase do time)
+- Contas `teste<número>h6a/h6m/h6x@teste.com` (Ana Teste e Caio Teste).
+- Boards "Board H6 Teste …" e "Board Outro Teste", com os cartões A a D e "Cartão de fora", e Sprints "Sprint Teste".
+
+Todos podem ser apagados (os movimentos não saem, por regra).
+
+### Pendências
+1. **Paulo:** revisar o PR #20 e o PR da H6 e confirmar as 5 decisões provisórias.
+2. **Paulo:** decidir as casas decimais e a semana incompleta da H5, e escrever a seção da sessão da H5 neste log. O registro de IA dele de 19/11 está embaixo de "Sprint 1", mas é da Sprint 2.
+3. **Depois dos merges:** conferir a H5 e a H6 no Pages.
+4. **H7 (CFD):** Sprint 2 vai até 24/11. Ela pode usar a `diasDaSprint` e o estado no fim de cada dia do `burndown`.
