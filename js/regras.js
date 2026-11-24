@@ -500,3 +500,70 @@ export function periodoPadrao(agoraIso) {
   const segunda = Date.parse(`${segundaDaSemana(hoje)}T00:00:00Z`);
   return { de: new Date(segunda - 21 * UM_DIA).toISOString().slice(0, 10), ate: hoje };
 }
+
+// ---------- História 7: diagrama de fluxo cumulativo (CFD) ----------
+// Definição (regra 3 do CLAUDE.md), a mesma do CFD da Sprint 1 em scripts/metricas.mjs:
+// para cada dia do período, quantos cartões havia em cada coluna no FIM do dia (São Paulo).
+// Cada cartão está na coluna do seu último movimento até aquele dia; cartão que ainda não existia
+// não conta. As faixas seguem a ordem das colunas do board (posicao). Coluna arquivada só entra se
+// teve cartão no período (para o gráfico não esconder trabalho que passou por ela).
+
+/**
+ * @param {{movimentos: {cartao_id: string, para_coluna_id: string, movido_em: string, id: number}[],
+ *          colunas: {id: string, nome: string, posicao: number, arquivada?: boolean}[],
+ *          de: string, ate: string}} dados de/ate = "AAAA-MM-DD", inclusive
+ * @returns {{colunas: {id: string, nome: string}[], dias: {dia: string, quantidades: number[]}[]}}
+ *   quantidades[i] = cartões na colunas[i] no fim daquele dia
+ */
+export function cfd({ movimentos, colunas, de, ate }) {
+  const erroNoPeriodo = validarPeriodo(de, ate);
+  if (erroNoPeriodo) throw new Error(erroNoPeriodo);
+
+  // Todos os dias do período, do "de" ao "ate".
+  const dias = [];
+  for (let dia = de; dia <= ate;
+    dia = new Date(Date.parse(`${dia}T00:00:00Z`) + UM_DIA).toISOString().slice(0, 10)) {
+    dias.push(dia);
+  }
+
+  // No fim de cada dia: cartão → coluna do último movimento dele até ali.
+  const ordem = emOrdem(movimentos);
+  const ondeEstava = dias.map((dia) => {
+    const coluna = new Map();
+    for (const mov of ordem) {
+      if (diaEmSaoPaulo(mov.movido_em) <= dia) coluna.set(mov.cartao_id, mov.para_coluna_id);
+    }
+    return coluna;
+  });
+  const contar = (i, idColuna) => [...ondeEstava[i].values()].filter((id) => id === idColuna).length;
+
+  const usadas = [...colunas]
+    .sort((x, y) => x.posicao - y.posicao)
+    .filter((c) => !c.arquivada || dias.some((_, i) => contar(i, c.id) > 0));
+
+  return {
+    colunas: usadas.map((c) => ({ id: c.id, nome: c.nome })),
+    dias: dias.map((dia, i) => ({ dia, quantidades: usadas.map((c) => contar(i, c.id)) })),
+  };
+}
+
+/**
+ * Texto do CSV do CFD (história 7): "Dia;Coluna 1;Coluna 2..." e uma linha por dia (dd/mm/aaaa).
+ * Separado por ";" porque o Excel em português usa a vírgula como separador decimal.
+ * Nome de coluna é texto do usuário: com ";", aspas ou quebra de linha vai entre aspas (aspas dobradas);
+ * se começar com = + - @, ganha um apóstrofo na frente, para o Excel não rodar como fórmula.
+ * @param {{colunas: {nome: string}[], dias: {dia: string, quantidades: number[]}[]}} resultado do cfd
+ */
+export function cfdParaCsv({ colunas, dias }) {
+  const celula = (texto) => {
+    let t = /^[=+\-@]/.test(texto) ? `'${texto}` : texto;
+    if (/[;"\r\n]/.test(t)) t = `"${t.replace(/"/g, '""')}"`;
+    return t;
+  };
+  const dataBr = (dia) => `${dia.slice(8, 10)}/${dia.slice(5, 7)}/${dia.slice(0, 4)}`;
+  const linhas = [
+    ['Dia', ...colunas.map((c) => celula(c.nome))].join(';'),
+    ...dias.map((d) => [dataBr(d.dia), ...d.quantidades].join(';')),
+  ];
+  return linhas.map((l) => `${l}\r\n`).join('');
+}
