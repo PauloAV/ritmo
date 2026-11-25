@@ -98,7 +98,7 @@ button.link { border: none; background: none; color: #3b2f8f; text-decoration: u
 .wip { font-weight: normal; color: #57606a; }
 .wip.cheia { font-weight: bold; color: #9a6700; }   /* chegou no limite */
 .wip.acima { font-weight: bold; color: #cf222e; }   /* passou do limite (com justificativa) */
-.politica { margin: .25rem 0 0; font-size: .8rem; color: #57606a; overflow-wrap: anywhere; }
+.politica { margin: .25rem 0 0; font-size: .8rem; color: #57606a; overflow-wrap: anywhere; white-space: pre-line; } /* a quebra de linha digitada na política aparece no board */
 .passagens { margin-top: 1.5rem; }
 .lista-passagens { padding-left: 1.25rem; }
 .lista-passagens p { margin: .25rem 0 .75rem; overflow-wrap: anywhere; }
