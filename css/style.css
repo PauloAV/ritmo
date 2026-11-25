@@ -52,7 +52,8 @@ button.link { border: none; background: none; color: #3b2f8f; text-decoration: u
 .formulario { display: grid; gap: .75rem; max-width: 360px; }
 .formulario label { display: grid; gap: .25rem; font-weight: 600; }
 .formulario input,
-.formulario select {
+.formulario select,
+.formulario textarea {
   font: inherit;
   padding: .5rem;
   border: 1px solid #8c959f;
@@ -97,7 +98,7 @@ button.link { border: none; background: none; color: #3b2f8f; text-decoration: u
 .wip { font-weight: normal; color: #57606a; }
 .wip.cheia { font-weight: bold; color: #9a6700; }   /* chegou no limite */
 .wip.acima { font-weight: bold; color: #cf222e; }   /* passou do limite (com justificativa) */
-.politica { margin: .25rem 0 0; font-size: .8rem; color: #57606a; overflow-wrap: anywhere; }
+.politica { margin: .25rem 0 0; font-size: .8rem; color: #57606a; overflow-wrap: anywhere; white-space: pre-line; } /* a quebra de linha digitada na política aparece no board */
 .passagens { margin-top: 1.5rem; }
 .lista-passagens { padding-left: 1.25rem; }
 .lista-passagens p { margin: .25rem 0 .75rem; overflow-wrap: anywhere; }
@@ -154,6 +155,27 @@ button.link { border: none; background: none; color: #3b2f8f; text-decoration: u
 .grafico .dia-cfd:hover { fill: rgba(31, 35, 40, .08); }
 #baixar-cfd { margin-bottom: 1rem; }
 .cfd td:nth-child(n+2) { text-align: right; font-variant-numeric: tabular-nums; }
+
+/* Caixa de diálogo (função perguntar, app.js), no lugar do prompt() e do confirm(). */
+#dialogo {
+  width: min(32rem, calc(100% - 2rem)); /* no celular, 1rem de margem de cada lado */
+  border: 1px solid #d0d7de;
+  border-radius: 8px;
+  padding: 1.25rem;
+  color: inherit;
+}
+#dialogo::backdrop { background: rgba(31, 35, 40, .5); } /* escurece a página atrás da caixa */
+#dialogo .formulario { max-width: none; }
+#dialogo h2 { margin: 0; font-size: 1.15rem; overflow-wrap: anywhere; }
+#dialogo-texto { margin: 0; white-space: pre-line; overflow-wrap: anywhere; } /* \n vira quebra de linha */
+#dialogo textarea { min-height: 4.5rem; resize: vertical; }
+.dialogo-erro { margin: 0; color: #b42318; font-weight: 600; }
+.dialogo-erro:empty { display: none; }
+.dialogo-botoes { display: flex; justify-content: flex-end; gap: .5rem; flex-wrap: wrap; }
+/* A caixa abre dentro de uma acao() (app.js), que apaga e desliga todos os botões da página.
+   Os botões da caixa precisam continuar funcionando, senão não daria para confirmar nem cancelar. */
+body[aria-busy="true"] #dialogo button { opacity: 1; pointer-events: auto; }
+body[aria-busy="true"] #dialogo { cursor: auto; }
 
 /* Celular: uma coluna embaixo da outra. */
 @media (max-width: 800px) {
