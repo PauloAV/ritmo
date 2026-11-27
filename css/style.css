@@ -27,6 +27,15 @@ main { padding: 1rem 1.5rem; }
 
 [hidden] { display: none !important; }
 
+/* ---------- Foco do teclado ----------
+   :focus-visible só aparece quando a pessoa navega pelo teclado (Tab), não no clique do mouse.
+   No cabeçalho roxo, o contorno é branco; o roxo padrão sumiria no fundo. */
+:focus-visible { outline: 3px solid #3b2f8f; outline-offset: 2px; }
+header :focus-visible { outline-color: #fff; }
+/* Os títulos recebem foco pelo código ao trocar de tela (mostrarTela, app.js). Eles não são
+   clicáveis, então não precisam de contorno. */
+h2[tabindex="-1"]:focus { outline: none; }
+
 #status { min-height: 1.5em; color: #b42318; font-weight: 600; }
 
 /* ---------- Botões e formulários ---------- */
@@ -38,6 +47,7 @@ button {
   background: #fff;
   color: inherit;
   cursor: pointer;
+  touch-action: manipulation; /* no celular, o toque não espera o "toque duplo para zoom" */
 }
 button:hover:not(:disabled) { background: #eef0f4; }
 button:disabled { opacity: .4; cursor: default; }
@@ -62,10 +72,12 @@ button.link { border: none; background: none; color: #3b2f8f; text-decoration: u
 
 /* ---------- Meus boards ---------- */
 .lista-boards { list-style: none; padding: 0; display: grid; gap: .5rem; max-width: 360px; }
-.lista-boards button { width: 100%; text-align: left; }
+/* overflow-wrap: um nome longo sem espaço quebra a linha em vez de passar da tela. */
+.lista-boards button { width: 100%; text-align: left; overflow-wrap: anywhere; }
 
 /* ---------- Board ---------- */
 .topo-board { display: flex; align-items: center; gap: 1rem; flex-wrap: wrap; }
+#nome-board { min-width: 0; overflow-wrap: anywhere; }
 
 /* Código de convite e membros (história 2). */
 .time-board { display: flex; flex-wrap: wrap; align-items: baseline; gap: .25rem 1rem; margin-bottom: 1rem; }
@@ -103,6 +115,10 @@ button.link { border: none; background: none; color: #3b2f8f; text-decoration: u
 .lista-passagens p { margin: .25rem 0 .75rem; overflow-wrap: anywhere; }
 .acoes { display: flex; flex-wrap: wrap; gap: .25rem; }
 .acoes button { padding: .25rem .5rem; font-size: .85rem; }
+/* Tela de toque (celular): botões pequenos (← → Desfazer) com pelo menos 44px, para o dedo acertar. */
+@media (pointer: coarse) {
+  .acoes button { min-width: 44px; min-height: 44px; }
+}
 .aviso-papel { margin: .5rem 0 0; font-size: .8rem; color: #57606a; }
 
 /* Cartões (história 3). */

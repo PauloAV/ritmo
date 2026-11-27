@@ -558,3 +558,35 @@ Contas `teste<número>h7@teste.com` (Ana Teste) e boards "Board H7 Teste" e "Boa
 4. **Fechamento da Sprint 2:** métricas (`/metricas-sprint`), Review e Retrospectiva. Decidir se a H7 conta na Sprint 2 (depende do merge hoje).
 5. **Sprint Planning da Sprint 3:** decidir em qual Sprint entra a #23.
 6. **Ainda da Sprint 1:** decidir o Início da H1 e da H2; Review e Retrospectiva.
+
+---
+
+## 24 e 25/11/2026 · Kauan · Sprint 2 e 3 · skills de front-end, acessibilidade e caixas de diálogo (PRs #25, #26 e #27)
+
+### O que foi feito
+1. **24/11, três PRs abertos pelo Kauan com a IA:**
+   - **#25 (`skills-frontend`):** três skills externas de UI/UX em `.claude/skills/`, com origem e licença em `ORIGEM-SKILLS-EXTERNAS.md`;
+   - **#26 (`melhorias-acessibilidade`):** 8 achados pequenos da `web-design-guidelines`. Entre eles: foco visível, foco no título ao trocar de tela, nomes longos que quebram a linha e botões de 44px em tela de toque;
+   - **#27 (`dialogos-no-lugar-de-prompt`):** a função `perguntar()` com `<dialog>` no lugar dos 4 `prompt()` e do `confirm()`.
+2. **O Paulo revisou os três pela DoD** e fez o teste com login que faltava, com o #26 e o #27 juntos: tudo passou. O PO aceitou os três PRs, inclusive o novo jeito de pedir a justificativa de WIP.
+3. **25/11, correções da revisão:**
+   - **#25:** `disable-model-invocation: true` na `bencium-controlled-ux-designer` e na `frontend-design`, anotado no `ORIGEM-SKILLS-EXTERNAS.md`. Elas só rodam com `/`;
+   - **#26:** registros de IA do #25 e do #26, esta seção do log e a descrição do PR corrigida (os 44px valem para todos os botões de `.acoes`, os do cartão e os da coluna);
+   - **#27:** `white-space: pre-line` na política da coluna e o registro de IA do #27;
+   - **issue #28:** o foco cai no `<body>` depois de fechar a caixa, porque o board é redesenhado. Pela revisão, isso pode ficar para depois.
+
+### Erros da IA
+- Os três PRs marcavam "uso da IA registrado" na DoD, e o #25 dizia que o registro viria no PR de acessibilidade. Nenhum dos três tinha o registro.
+- O teste headless do #27 conferiu a quebra de linha só dentro da caixa. No board, a política com várias linhas aparecia numa linha só.
+- A descrição do #26 dizia que os 44px valiam só para os botões do cartão.
+- Nesta sessão, um `sed -i` do Git Bash regravou dois `SKILL.md` com LF. O diff não mudou, por causa do `core.autocrlf`, e a cópia foi restaurada com `git checkout`.
+
+### Cuidados
+- **Ordem de merge:** #25 → #26 → #27. O #26 e o #27 acrescentam linhas no fim do `docs/registro-ia.md` e mexem nos mesmos 3 arquivos de tela, em trechos diferentes (o Paulo testou: juntam sem conflito no código). Quem for por último atualiza com a `main`, mantém as linhas dos dois no registro em ordem e roda `npm test` antes do merge.
+- Os registros destes PRs estão na tabela da **Sprint 2**, porque o trabalho é de 24/11, o último dia dela.
+
+### Pendências
+1. **Paulo:** conferir as correções e aprovar e mesclar o #25, o #26 e o #27, nessa ordem.
+2. **Kauan:** atualizar o #27 com a `main` depois do merge do #26.
+3. **Depois dos merges:** conferir o foco, os nomes longos e as caixas de diálogo no Pages.
+4. **Sprint Planning da Sprint 3:** decidir em qual Sprint entram a #23, a #24 e a #28.

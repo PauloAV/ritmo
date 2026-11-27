@@ -3,6 +3,8 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <!-- Cor da barra do navegador no celular: o mesmo roxo do cabeçalho. -->
+  <meta name="theme-color" content="#3b2f8f">
   <title>Ritmo</title>
   <link rel="stylesheet" href="css/style.css">
 </head>
@@ -21,13 +23,15 @@
 
     <!-- Tela 1: entrar ou criar conta -->
     <section id="tela-entrar" class="tela" hidden>
-      <h2 id="titulo-entrar">Entrar</h2>
+      <!-- tabindex="-1": o título pode receber o foco pelo código ao trocar de tela (mostrarTela,
+           app.js), sem entrar na ordem do Tab. Assim o leitor de tela anuncia a tela nova. -->
+      <h2 id="titulo-entrar" tabindex="-1">Entrar</h2>
       <form id="form-entrar" class="formulario" novalidate>
         <label id="campo-nome" hidden>Seu nome
           <input id="nome" type="text" autocomplete="name">
         </label>
         <label>E-mail
-          <input id="email" type="email" autocomplete="email" required>
+          <input id="email" type="email" autocomplete="email" spellcheck="false" required>
         </label>
         <label>Senha
           <input id="senha" type="password" autocomplete="current-password" required>
@@ -39,11 +43,11 @@
 
     <!-- Tela 2: meus boards -->
     <section id="tela-boards" class="tela" hidden>
-      <h2>Meus boards</h2>
+      <h2 tabindex="-1">Meus boards</h2>
       <ul id="lista-boards" class="lista-boards"></ul>
       <form id="form-board" class="formulario em-linha" novalidate>
         <label>Nome do novo board
-          <input id="nome-board-novo" type="text">
+          <input id="nome-board-novo" type="text" autocomplete="off">
         </label>
         <button type="submit">Criar board</button>
       </form>
@@ -62,7 +66,7 @@
     <section id="tela-board" class="tela" hidden>
       <div class="topo-board">
         <button id="voltar" type="button">← Meus boards</button>
-        <h2 id="nome-board"></h2>
+        <h2 id="nome-board" tabindex="-1"></h2>
       </div>
       <!-- História 2: código para convidar o time e quem já está no board -->
       <div class="time-board">
@@ -73,7 +77,7 @@
       <!-- História 3: o cartão novo entra na primeira coluna do board -->
       <form id="form-cartao" class="formulario em-linha" novalidate>
         <label>Novo cartão
-          <input id="titulo-cartao-novo" type="text">
+          <input id="titulo-cartao-novo" type="text" autocomplete="off">
         </label>
         <label>Pontos (opcional)
           <input id="pontos-cartao-novo" type="text" inputmode="numeric" size="4">
@@ -86,7 +90,7 @@
       <div id="quadro" class="quadro"></div>
       <form id="form-coluna" class="formulario em-linha" novalidate>
         <label>Nova coluna
-          <input id="nome-coluna-nova" type="text">
+          <input id="nome-coluna-nova" type="text" autocomplete="off">
         </label>
         <button type="submit">Adicionar coluna</button>
       </form>
@@ -123,7 +127,7 @@
         </p>
         <form id="form-sprint" class="formulario form-sprint" novalidate>
           <div class="formulario em-linha">
-            <label>Nova Sprint <input id="nome-sprint" type="text"></label>
+            <label>Nova Sprint <input id="nome-sprint" type="text" autocomplete="off"></label>
             <label>Início <input id="inicio-sprint" type="date"></label>
             <label>Fim <input id="fim-sprint" type="date"></label>
           </div>

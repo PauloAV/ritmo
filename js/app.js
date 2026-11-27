@@ -26,12 +26,19 @@ const $ = (seletor) => document.querySelector(seletor);
 
 // ---------- Utilidades ----------
 
-/** Mostra só a tela pedida e esconde as outras. */
+/**
+ * Mostra só a tela pedida e esconde as outras.
+ * Se a pessoa veio de outra tela, o foco vai para o título (h2) da tela nova: quem usa teclado
+ * continua dali, e o leitor de tela anuncia a mudança. Ao abrir a página, o foco não é movido.
+ */
 function mostrarTela(id) {
-  for (const tela of document.querySelectorAll('.tela')) {
+  const telas = [...document.querySelectorAll('.tela')];
+  const veioDeOutraTela = telas.some((tela) => !tela.hidden && tela.id !== id);
+  for (const tela of telas) {
     tela.hidden = tela.id !== id;
   }
   mostrarMensagem('');
+  if (veioDeOutraTela) $(`#${id} h2`).focus();
 }
 
 /** Mensagem de erro ou aviso no topo da página. */
@@ -252,8 +259,10 @@ let cartoesDasSprints = [];
 
 async function abrirBoard(board) {
   boardAtual = board;
-  mostrarTela('tela-board');
+  // O nome entra antes de mostrar a tela: mostrarTela põe o foco neste título, e o leitor
+  // de tela precisa encontrá-lo já preenchido.
   $('#nome-board').textContent = board.nome;
+  mostrarTela('tela-board');
   $('#codigo-board').textContent = board.codigo_convite;
   $('#lista-membros').replaceChildren(); // apaga os membros do board anterior
   $('#titulo-membros').textContent = 'Membros'; // e a contagem antiga também (revisão do Paulo)
