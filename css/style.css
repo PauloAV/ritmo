@@ -154,6 +154,8 @@ button.link { border: none; background: none; color: #3b2f8f; text-decoration: u
 .grafico .dia-cfd:hover { fill: rgba(31, 35, 40, .08); }
 #baixar-cfd { margin-bottom: 1rem; }
 .cfd td:nth-child(n+2) { text-align: right; font-variant-numeric: tabular-nums; }
+.previsao td:nth-child(n+2) { text-align: right; font-variant-numeric: tabular-nums; } /* datas e dias alinhados */
+.previsao input[type="number"] { width: 8rem; }
 
 /* Celular: uma coluna embaixo da outra. */
 @media (max-width: 800px) {

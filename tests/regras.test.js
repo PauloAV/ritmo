@@ -11,6 +11,7 @@ import {
   validarPeriodo,
   validarSprint, diasDaSprint, burndown,
   cfd, cfdParaCsv,
+  criarSorteio, throughputDiario, contarRestantes, preverEntrega,
 } from '../js/regras.js';
 
 // Dados fictícios: nada de nome, e-mail ou dado real nos testes.
@@ -946,5 +947,145 @@ describe('cfdParaCsv', () => {
   it('nome começando com tab ou \\r também ganha o apóstrofo (e o \\r ainda vai entre aspas)', () => {
     const r = { colunas: [{ id: 'a', nome: '\tA' }, { id: 'b', nome: '\rB' }], dias: [] };
     expect(cfdParaCsv(r)).toBe('Dia;\'\tA;"\'\rB"\r\n');
+  });
+});
+
+// ---------- História 8: previsão de entrega (Monte Carlo) ----------
+
+describe('criarSorteio', () => {
+  it('a mesma semente dá sempre a mesma sequência (critério 4)', () => {
+    const a = criarSorteio(42);
+    const b = criarSorteio(42);
+    const sequenciaA = [a(), a(), a(), a(), a()];
+    expect([b(), b(), b(), b(), b()]).toEqual(sequenciaA);
+  });
+
+  it('outra semente dá outra sequência, e todo número fica entre 0 (inclusive) e 1', () => {
+    const a = criarSorteio(1);
+    const b = criarSorteio(2);
+    const numeros = Array.from({ length: 1000 }, () => a());
+    expect(numeros.every((n) => n >= 0 && n < 1)).toBe(true);
+    expect(b()).not.toBe(criarSorteio(1)());
+  });
+});
+
+describe('throughputDiario e contarRestantes', () => {
+  // Board fictício. Horários em UTC; São Paulo = UTC − 3.
+  const colunas = [
+    { id: 'c-backlog', papel: null },
+    { id: 'c-fazendo', papel: 'inicio' },
+    { id: 'c-pronto', papel: 'fim' },
+  ];
+  const cartoes = ['A', 'B', 'C', 'D', 'E'].map((id) => ({ id, titulo: `Cartão ${id}` }));
+  const mov = (id, cartao, de, para, movido_em) => ({ id, cartao_id: cartao, de_coluna_id: de, para_coluna_id: para, movido_em });
+  const movimentos = [
+    mov(1, 'A', null, 'c-backlog', '2026-11-20T12:00:00Z'), // 1º movimento do board: 20/11, 09h em SP
+    mov(2, 'B', null, 'c-backlog', '2026-11-20T13:00:00Z'),
+    mov(3, 'C', null, 'c-backlog', '2026-11-20T14:00:00Z'),
+    mov(4, 'A', 'c-backlog', 'c-pronto', '2026-11-21T15:00:00Z'), // A concluído em 21/11
+    mov(5, 'D', null, 'c-backlog', '2026-11-21T16:00:00Z'),
+    mov(6, 'E', null, 'c-backlog', '2026-11-22T12:00:00Z'), // E fica no backlog
+    mov(7, 'B', 'c-backlog', 'c-pronto', '2026-11-23T02:00:00Z'), // 22/11, 23h em SP: conta no dia 22
+    mov(8, 'C', 'c-backlog', 'c-pronto', '2026-11-23T14:00:00Z'),
+    mov(9, 'D', 'c-backlog', 'c-pronto', '2026-11-23T18:00:00Z'), // D concluído em 23/11
+    mov(10, 'C', 'c-pronto', 'c-fazendo', '2026-11-24T14:00:00Z'), // C saiu do Concluído: não conta
+  ];
+  const dados = { cartoes, movimentos, colunas, hoje: '2026-11-24' };
+
+  // Conta à mão: o histórico vai de 20/11 (1º movimento, depois do "de") até 24/11 (hoje, antes do "ate").
+  // 20/11: 0 · 21/11: A · 22/11: B · 23/11: D (C voltou depois, então não conta) · 24/11: 0
+  it('concluídos por dia, do 1º movimento do board até hoje (critério 1)', () => {
+    expect(throughputDiario({ ...dados, de: '2026-11-01', ate: '2026-11-30' })).toEqual([
+      { dia: '2026-11-20', concluidos: 0 },
+      { dia: '2026-11-21', concluidos: 1 },
+      { dia: '2026-11-22', concluidos: 1 },
+      { dia: '2026-11-23', concluidos: 1 },
+      { dia: '2026-11-24', concluidos: 0 },
+    ]);
+  });
+
+  it('"de" depois do 1º movimento: o histórico começa no "de"', () => {
+    expect(throughputDiario({ ...dados, de: '2026-11-22', ate: '2026-11-30' }).map((d) => d.concluidos))
+      .toEqual([1, 1, 0]);
+  });
+
+  it('período antes do 1º movimento ou board sem movimentos: histórico vazio; período inválido: erro', () => {
+    expect(throughputDiario({ ...dados, de: '2026-11-01', ate: '2026-11-10' })).toEqual([]);
+    expect(throughputDiario({ ...dados, movimentos: [], de: '2026-11-01', ate: '2026-11-30' })).toEqual([]);
+    expect(() => throughputDiario({ ...dados, de: '2026-11-30', ate: '2026-11-01' })).toThrow('período válido');
+  });
+
+  it('restantes = cartões que não estão na coluna de fim agora (C voltou; E nunca saiu do backlog)', () => {
+    expect(contarRestantes({ cartoes, movimentos, colunas })).toBe(2);
+  });
+});
+
+describe('preverEntrega', () => {
+  // Sorteio "de mentira" com números escolhidos à mão: devolve a lista na ordem, um por chamada.
+  const sorteioFixo = (numeros) => {
+    let i = 0;
+    return () => numeros[i++];
+  };
+
+  // Conta à mão. Histórico [0, 1, 2]; o dia sorteado é floor(número × 3):
+  // 0,1 → dia 0 (vale 0) · 0,5 → dia 1 (vale 1) · 0,9 → dia 2 (vale 2). Restam 3 cartões; 4 cenários.
+  // Cenário 1: 0,9 0,5         → 2 + 1 = 3          → 2 dias
+  // Cenário 2: 0,1 0,5 0,5 0,5 → 0 + 1 + 1 + 1 = 3  → 4 dias
+  // Cenário 3: 0,9 0,9         → 2 + 2 = 4 (≥ 3)    → 2 dias
+  // Cenário 4: 0,5 0,1 0,9     → 1 + 0 + 2 = 3      → 3 dias
+  // Em ordem: [2, 2, 3, 4]. X% = posição arredondada para cima (X% × 4), contando de 1:
+  // 50% → 2ª → 2 dias (28/11) · 85% → 3,4 → 4ª → 4 dias (30/11) · 95% → 3,8 → 4ª → 4 dias (30/11)
+  const numeros = [0.9, 0.5, 0.1, 0.5, 0.5, 0.5, 0.9, 0.9, 0.5, 0.1, 0.9];
+  const historico = [0, 1, 2];
+
+  it('datas de 50%, 85% e 95% conferidas à mão, contando a partir de amanhã (critério 2)', () => {
+    const r = preverEntrega({
+      throughputDiario: historico, restantes: 3, hoje: '2026-11-26', sortear: sorteioFixo(numeros), simulacoes: 4,
+    });
+    expect(r.erro).toBeNull();
+    expect(r.duracoes).toEqual([2, 2, 3, 4]);
+    expect(r.previsoes).toEqual([
+      { chance: 50, dias: 2, dia: '2026-11-28' },
+      { chance: 85, dias: 4, dia: '2026-11-30' },
+      { chance: 95, dias: 4, dia: '2026-11-30' },
+    ]);
+  });
+
+  it('simula 10.000 cenários quando não se diz quantos (critério 1)', () => {
+    // Histórico [5] e 3 restantes: todo cenário termina no 1º dia, com um sorteio só.
+    let chamadas = 0;
+    const sortear = () => { chamadas += 1; return 0; };
+    const r = preverEntrega({ throughputDiario: [5], restantes: 3, hoje: '2026-11-26', sortear });
+    expect(chamadas).toBe(10000);
+    expect(r.duracoes).toHaveLength(10000);
+    expect(r.previsoes.map((p) => p.dia)).toEqual(['2026-11-27', '2026-11-27', '2026-11-27']);
+  });
+
+  it('com menos de 10 dias de histórico, avisa que não é confiável; com 10, não avisa (critério 3)', () => {
+    const base = { restantes: 2, hoje: '2026-11-26', simulacoes: 50 };
+    const curto = preverEntrega({ ...base, throughputDiario: [1, 0, 1, 2, 0, 1, 1, 0, 1], sortear: criarSorteio(7) });
+    expect(curto.confiavel).toBe(false);
+    expect(curto.aviso).toBe('Só 9 dia(s) de histórico: com menos de 10, a previsão ainda não é confiável.');
+    const dez = preverEntrega({ ...base, throughputDiario: [1, 0, 1, 2, 0, 1, 1, 0, 1, 1], sortear: criarSorteio(7) });
+    expect(dez.confiavel).toBe(true);
+    expect(dez.aviso).toBeNull();
+  });
+
+  it('a mesma semente dá sempre o mesmo resultado; outra semente pode mudar (critério 4)', () => {
+    const base = { throughputDiario: [0, 1, 0, 2, 1, 0, 0, 3, 1, 0, 1, 2], restantes: 15, hoje: '2026-11-26' };
+    const primeira = preverEntrega({ ...base, sortear: criarSorteio(2026) });
+    const segunda = preverEntrega({ ...base, sortear: criarSorteio(2026) });
+    expect(segunda).toEqual(primeira);
+    expect(preverEntrega({ ...base, sortear: criarSorteio(1) }).duracoes).not.toEqual(primeira.duracoes);
+  });
+
+  it('sem nada concluído no histórico ou sem cartões restantes: explica e não simula', () => {
+    const sortear = () => { throw new Error('não devia sortear'); };
+    expect(preverEntrega({ throughputDiario: [], restantes: 3, hoje: '2026-11-26', sortear }).erro)
+      .toBe('Nenhum cartão concluído no histórico: ainda não dá para prever.');
+    expect(preverEntrega({ throughputDiario: [0, 0, 0], restantes: 3, hoje: '2026-11-26', sortear }).erro)
+      .toBe('Nenhum cartão concluído no histórico: ainda não dá para prever.');
+    expect(preverEntrega({ throughputDiario: [1, 2], restantes: 0, hoje: '2026-11-26', sortear }).erro)
+      .toBe('Não há cartões restantes: tudo já está concluído.');
   });
 });

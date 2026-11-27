@@ -160,6 +160,27 @@
           <table id="tabela-cfd" aria-label="Cartões em cada coluna no fim de cada dia"></table>
         </div>
       </section>
+      <!-- História 8: previsão de entrega por Monte Carlo (contas em throughputDiario e preverEntrega, regras.js) -->
+      <section class="metricas previsao" aria-labelledby="titulo-previsao">
+        <h3 id="titulo-previsao">Previsão de entrega (Monte Carlo)</h3>
+        <p class="definicoes">
+          Simula 10.000 cenários. Em cada um, cada dia a partir de amanhã recebe o throughput (cartões
+          concluídos) de um dia sorteado do histórico, até acabarem os cartões restantes (os que não estão
+          em Concluído). "85% de chance" é a data em que pelo menos 85% dos cenários já terminaram.
+          O histórico é o período das Métricas do fluxo (De e Até, acima), a partir do primeiro movimento do
+          board e até hoje, com todos os dias corridos. A mesma semente dá sempre o mesmo resultado.
+          Vale a coluna marcada como fim do fluxo, mesmo que o time mude o nome dela.
+        </p>
+        <div class="formulario em-linha">
+          <label>Semente do sorteio <input id="semente-previsao" type="number" min="0" step="1"></label>
+          <button id="nova-semente" type="button">Sortear outra semente</button>
+        </div>
+        <p id="resumo-previsao" class="resumo-metricas" aria-live="polite"></p>
+        <p id="aviso-previsao" class="aviso-pontos" role="status"></p>
+        <div class="tabela-rolavel">
+          <table id="tabela-previsao" aria-label="Datas com 50%, 85% e 95% de chance de terminar"></table>
+        </div>
+      </section>
       <section class="passagens" aria-labelledby="titulo-passagens">
         <h3 id="titulo-passagens">Passagens do limite de WIP (para o Scrum Master)</h3>
         <ul id="lista-passagens" class="lista-passagens"></ul>

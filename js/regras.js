@@ -638,3 +638,117 @@ export function cfdParaCsv({ colunas, dias }) {
   ];
   return linhas.map((l) => `${l}\r\n`).join('');
 }
+
+// ---------- História 8: previsão de entrega (Monte Carlo) ----------
+// Definição (regra 3 do CLAUDE.md):
+// - Throughput diário = quantos cartões entraram na coluna de papel 'fim' em cada dia (São Paulo),
+//   contando só quem ESTÁ lá agora (a mesma regra da H5: vale a última entrada no fim).
+//   O histórico vai do dia do 1º movimento do board (ou do "De", o que vier depois) até hoje (ou o "Até").
+//   Dias corridos: sábado, domingo e dia sem nada concluído entram valendo 0.
+// - Restantes = cartões do board que não estão na coluna de papel 'fim' agora.
+// - Cada cenário sorteia, para cada dia a partir de amanhã, um dia qualquer do histórico e desconta
+//   o throughput dele dos restantes, até zerar. A duração do cenário é o número de dias sorteados.
+// - "X% de chance" = a menor duração em que pelo menos X% dos cenários já terminaram.
+// O sorteio vem de fora (regra 4): nos testes, a semente é fixa e o resultado é sempre o mesmo.
+
+/**
+ * Sorteio com semente (gerador congruencial linear, com as constantes do livro "Numerical Recipes"):
+ * cada número sai do anterior com "multiplica, soma e fica com o resto da divisão por 2^32".
+ * A mesma semente dá sempre a mesma sequência. Não serve para segurança, só para simulação.
+ * @param {number} semente número inteiro
+ * @returns {() => number} função que devolve um número de 0 (inclusive) a 1 (exclusive)
+ */
+export function criarSorteio(semente) {
+  let estado = semente >>> 0; // ">>> 0" deixa o número como inteiro de 0 a 2^32 − 1
+  return () => {
+    // Math.imul multiplica como inteiro de 32 bits (sem perder precisão); ">>> 0" é o resto de 2^32.
+    estado = (Math.imul(estado, 1664525) + 1013904223) >>> 0;
+    return estado / 4294967296; // 4294967296 = 2^32, então o resultado fica de 0 a quase 1
+  };
+}
+
+/**
+ * Throughput de cada dia do histórico (história 8). Definição no início desta seção.
+ * @param {{cartoes: {id: string}[], movimentos: object[], colunas: object[],
+ *          de: string, ate: string, hoje: string}} dados datas "AAAA-MM-DD"
+ * @returns {{dia: string, concluidos: number}[]} vazio se o board não tem movimento no período
+ */
+export function throughputDiario({ cartoes, movimentos, colunas, de, ate, hoje }) {
+  const erroNoPeriodo = validarPeriodo(de, ate);
+  if (erroNoPeriodo) throw new Error(erroNoPeriodo);
+  if (movimentos.length === 0) return [];
+
+  const primeiroDia = diaEmSaoPaulo(emOrdem(movimentos)[0].movido_em);
+  const inicio = primeiroDia > de ? primeiroDia : de;
+  const fim = ate < hoje ? ate : hoje;
+
+  // Dia (de São Paulo) em que cada cartão concluído entrou no fim.
+  const diasDeConclusao = cartoes.map((cartao) => fimDoCartao(cartao, movimentos, colunas))
+    .filter((fimEm) => fimEm !== null)
+    .map(diaEmSaoPaulo);
+  return diasDaSprint(inicio, fim).map((dia) => ({
+    dia,
+    concluidos: diasDeConclusao.filter((d) => d === dia).length,
+  }));
+}
+
+/** Cartões que ainda não estão na coluna de papel 'fim' (história 8). */
+export function contarRestantes({ cartoes, movimentos, colunas }) {
+  return cartoes.filter((cartao) => fimDoCartao(cartao, movimentos, colunas) === null).length;
+}
+
+/** Quando o cartão entrou no fim (só se ele está lá agora), ou null. Regra de datasDoFluxo (H5). */
+function fimDoCartao(cartao, movimentos, colunas) {
+  return datasDoFluxo(movimentos.filter((mov) => mov.cartao_id === cartao.id), colunas).fimEm;
+}
+
+export const SIMULACOES_PADRAO = 10000;
+export const DIAS_PARA_CONFIAR = 10;
+const CHANCES = [50, 85, 95];
+
+/**
+ * Previsão de entrega pelo método de Monte Carlo (história 8). Definição no início desta seção.
+ * @param {{throughputDiario: number[], restantes: number, hoje: string, sortear: () => number,
+ *          simulacoes?: number}} dados throughputDiario = concluídos em cada dia do histórico;
+ *   hoje "AAAA-MM-DD"; sortear = função de 0 a 1 (criarSorteio(semente) na tela e nos testes)
+ * @returns {{erro: string|null, confiavel: boolean, aviso: string|null, duracoes: number[],
+ *            previsoes: {chance: number, dias: number, dia: string}[]}}
+ *   duracoes = dias de cada cenário, em ordem crescente; dia = hoje + dias
+ */
+export function preverEntrega({ throughputDiario, restantes, hoje, sortear, simulacoes = SIMULACOES_PADRAO }) {
+  const confiavel = throughputDiario.length >= DIAS_PARA_CONFIAR;
+  const resultado = {
+    erro: null,
+    confiavel,
+    aviso: confiavel ? null : `Só ${throughputDiario.length} dia(s) de histórico: com menos de `
+      + `${DIAS_PARA_CONFIAR}, a previsão ainda não é confiável.`,
+    duracoes: [],
+    previsoes: [],
+  };
+  // Sem nenhum dia com concluído, nenhum cenário terminaria nunca: o laço abaixo não pararia.
+  if (!throughputDiario.some((n) => n > 0)) {
+    return { ...resultado, erro: 'Nenhum cartão concluído no histórico: ainda não dá para prever.' };
+  }
+  if (restantes <= 0) return { ...resultado, erro: 'Não há cartões restantes: tudo já está concluído.' };
+
+  for (let cenario = 0; cenario < simulacoes; cenario += 1) {
+    let falta = restantes;
+    let dias = 0;
+    while (falta > 0) {
+      dias += 1;
+      falta -= throughputDiario[Math.floor(sortear() * throughputDiario.length)]; // um dia qualquer do histórico
+    }
+    resultado.duracoes.push(dias);
+  }
+  resultado.duracoes.sort((x, y) => x - y);
+
+  resultado.previsoes = CHANCES.map((chance) => {
+    // Posição (contando de 1) do cenário em que X% já terminaram, arredondada para cima.
+    // chance × simulacoes primeiro, só com inteiros: com 7%, (7 / 100) × 100 dá 7,000000000000001 no
+    // JavaScript, e o ceil iria a 8. Com 50, 85 e 95 não acontece, mas assim não depende da sorte.
+    const dias = resultado.duracoes[Math.ceil((chance * simulacoes) / 100) - 1];
+    const dia = new Date(Date.parse(`${hoje}T00:00:00Z`) + dias * UM_DIA).toISOString().slice(0, 10);
+    return { chance, dias, dia };
+  });
+  return resultado;
+}
