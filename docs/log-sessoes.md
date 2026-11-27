@@ -558,3 +558,44 @@ Contas `teste<número>h7@teste.com` (Ana Teste) e boards "Board H7 Teste" e "Boa
 4. **Fechamento da Sprint 2:** métricas (`/metricas-sprint`), Review e Retrospectiva. Decidir se a H7 conta na Sprint 2 (depende do merge hoje).
 5. **Sprint Planning da Sprint 3:** decidir em qual Sprint entra a #23.
 6. **Ainda da Sprint 1:** decidir o Início da H1 e da H2; Review e Retrospectiva.
+
+---
+
+## 26/11/2026 · Kauan · Sprint 3 · H8 (previsão Monte Carlo)
+
+### O que foi feito
+1. **H8 (#8) com TDD**, branch `historia-8-monte-carlo`, criada a partir da `main` (`30f0a6b`) e enviada na hora:
+   - regras em `js/regras.js`, seção "História 8", com a definição escrita no começo:
+     - `criarSorteio(semente)`: gerador congruencial linear;
+     - `throughputDiario`: concluídos por dia, pela mesma regra da H5;
+     - `contarRestantes`;
+     - `preverEntrega`, com `SIMULACOES_PADRAO = 10000` e `DIAS_PARA_CONFIAR = 10`;
+   - 11 testes novos, 121 no total. O exemplo feito à mão usa um sorteio fixo, e há o teste de mesma semente;
+   - tela: seção "Previsão de entrega (Monte Carlo)" depois do CFD. Usa o mesmo De/Até das métricas, tem a semente num campo e o botão "Sortear outra semente", mostra os restantes, o histórico, o aviso de histórico curto e a tabela 50/85/95%;
+   - **banco sem mudança, sem migração.**
+2. **Teste no navegador (headless, Chrome), no projeto do time, em 1280 e 390 px:** 19/19.
+   - Passaram: board vazio, aviso de 1 dia de histórico, datas certas depois de concluir 2 cartões, semente inválida, período inválido e no futuro, Desfazer tirando um cartão de Concluído, troca de board e nenhuma gravação ao trocar a semente.
+3. **DoD** (`/revisar-dod`): tudo ✅. O único ⚠️ era o mulberry32, difícil de explicar, e foi trocado pelo gerador congruencial linear.
+
+### Decisões provisórias (para o Paulo, PO, confirmar no PR)
+1. O histórico é o período De/Até das métricas, a partir do dia do 1º movimento do board e até hoje.
+2. Dias corridos: sábado, domingo e dia sem concluído entram valendo 0.
+3. Restantes = cartões que não estão na coluna de papel `'fim'` agora.
+4. A simulação começa amanhã: terminar no 1º dia simulado = amanhã.
+5. "X% de chance" = a menor duração em que pelo menos X% dos cenários já terminaram (posição arredondada para cima).
+6. A semente é sorteada ao abrir a página e pode ser digitada para repetir a conta.
+
+### Para saber explicar na defesa
+- O `Math.random` aparece só no `app.js`, para sugerir a semente. A regra recebe a função `sortear` por parâmetro (regra 4).
+- `chance × simulacoes / 100`, e não `(chance / 100) × simulacoes`: a divisão primeiro pode dar `7,000000000000001`, e o `Math.ceil` pularia uma posição.
+- O banco não aceita movimento com data passada (regra 1). Por isso, um board novo tem só 1 dia de histórico e a previsão aparece como "não confiável". O caso com 10 dias ou mais está nos testes do Vitest.
+- Sem nenhum concluído no histórico, a simulação não roda, porque nenhum cenário terminaria nunca.
+
+### Dados fictícios criados (no Supabase do time)
+Conta `teste<número>h8@teste.com` (Ana Teste) e boards "Board H8 Teste" e "Board H8 Outro Teste", com os cartões A a E. Podem ser apagados (os movimentos não saem, por regra).
+
+### Pendências
+1. **Paulo:** revisar o PR da H8 e confirmar as 6 decisões provisórias.
+2. **Depois do merge:** conferir a previsão no Pages.
+3. **H9 ("E se…?")** pode reaproveitar a `preverEntrega` mudando só o `restantes` e calculando a chance até uma data escolhida, sem gravar nada.
+4. **Ordem de merge:** este PR acrescenta a seção "## Sprint 3" no `docs/registro-ia.md`. Se o #26 ou o #27 entrar antes, juntar as linhas no fim do arquivo, cada uma na sua Sprint.

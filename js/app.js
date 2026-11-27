@@ -5,6 +5,7 @@
 // História 5: Lead Time, Cycle Time e Throughput do período escolhido, com o valor de cada cartão.
 // História 6: Sprints (datas e cartões escolhidos) e o burndown de cada uma, em SVG feito à mão.
 // História 7: CFD do período das métricas (áreas empilhadas em SVG), com tabela e "Baixar CSV".
+// História 8: previsão de entrega por Monte Carlo (50%, 85% e 95%), com a semente do sorteio na tela.
 // Segurança: texto digitado pelo usuário entra na página só por textContent (nunca innerHTML),
 // para ninguém conseguir injetar HTML ou script pelo nome de um board ou coluna.
 import { supabase } from './supabase.js';
@@ -17,6 +18,7 @@ import {
   metricasDoFluxo, formatarDias, formatarDataHora, periodoPadrao, validarPeriodo,
   validarSprint, burndown, diaEmSaoPaulo,
   cfd, cfdParaCsv,
+  criarSorteio, throughputDiario, contarRestantes, preverEntrega, SIMULACOES_PADRAO,
 } from './regras.js';
 
 // Campos do board que as telas usam (o código de convite aparece no board, história 2).
@@ -263,6 +265,7 @@ async function abrirBoard(board) {
   sprintsDoBoard = [];
   cartoesDasSprints = [];
   limparCfd(); // o CFD do board anterior também não (história 7)
+  limparPrevisao(); // nem a previsão (história 8)
   $('#sprint-escolhida').replaceChildren();
   // desenharColunas desenha também a lista de membros (desenharMembros).
   await Promise.all([desenharColunas(), desenharPassagens(), carregarSprints()]);
@@ -325,6 +328,7 @@ async function desenharColunas() {
   preencherCartoesParaSprint(); // cartão novo já aparece para escolher na Sprint
   desenharBurndown(); // e o burndown também acompanha cada movimento
   desenharCfd(); // e o CFD (história 7)
+  desenharPrevisao(); // e a previsão de entrega (história 8)
   desenharMembros(membros.data, perfis.data);
   preencherResponsaveis(perfis.data);
   const cartoesNa = (idColuna) => cartoes.data.filter((c) => c.coluna_id === idColuna);
@@ -1137,6 +1141,73 @@ function graficoCfd(r) {
     svg.append(faixa);
   });
   return svg;
+}
+
+// ---------- Previsão de entrega (história 8) ----------
+// As contas estão em throughputDiario e preverEntrega (regras.js), com a definição e os testes.
+// Aqui só escolhemos a semente, lemos o período e desenhamos o resumo e a tabela.
+// Dados de dadosDoFluxo (o que o quadro acabou de buscar): sem busca nova, e nada é gravado no banco.
+
+/** Semente nova para a tela. O Math.random fica aqui, fora da regra (regra 4 do CLAUDE.md). */
+function sortearSemente() {
+  $('#semente-previsao').value = String(Math.floor(Math.random() * 1000000));
+}
+sortearSemente(); // ao abrir a página
+$('#nova-semente').addEventListener('click', () => {
+  sortearSemente();
+  desenharPrevisao();
+});
+$('#semente-previsao').addEventListener('change', desenharPrevisao);
+$('#metricas-de').addEventListener('change', desenharPrevisao);
+$('#metricas-ate').addEventListener('change', desenharPrevisao);
+
+/** Apaga a previsão (ao trocar de board, com período inválido ou sem dados para prever). */
+function limparPrevisao(textoDoResumo = '', aviso = '') {
+  $('#resumo-previsao').textContent = textoDoResumo;
+  $('#aviso-previsao').textContent = aviso;
+  $('#tabela-previsao').replaceChildren();
+}
+
+/** Roda a simulação com a semente da tela e mostra as datas de 50%, 85% e 95%. */
+function desenharPrevisao() {
+  const de = $('#metricas-de').value;
+  const ate = $('#metricas-ate').value;
+  const erroNoPeriodo = validarPeriodo(de, ate); // a mesma conferência que a throughputDiario faz
+  if (erroNoPeriodo) {
+    limparPrevisao(erroNoPeriodo);
+    return;
+  }
+  if (dadosDoFluxo.colunas.length === 0) { // o board ainda está carregando
+    limparPrevisao();
+    return;
+  }
+  const semente = Number($('#semente-previsao').value);
+  if ($('#semente-previsao').value.trim() === '' || !Number.isInteger(semente) || semente < 0) {
+    limparPrevisao('A semente precisa ser um número inteiro, 0 ou maior.');
+    return;
+  }
+
+  const hoje = diaEmSaoPaulo(new Date().toISOString());
+  const historico = throughputDiario({ ...dadosDoFluxo, de, ate, hoje });
+  const restantes = contarRestantes(dadosDoFluxo);
+  const r = preverEntrega({
+    throughputDiario: historico.map((d) => d.concluidos), restantes, hoje, sortear: criarSorteio(semente),
+  });
+
+  const periodo = historico.length === 0 ? 'sem dias de histórico'
+    : `histórico de ${historico.length} dia(s), de ${diaCurto(historico[0].dia)} a ${diaCurto(historico.at(-1).dia)}`;
+  if (r.erro) {
+    limparPrevisao(`${restantes} cartão(ões) restante(s) · ${periodo}. ${r.erro}`, r.aviso ?? '');
+    return;
+  }
+  const concluidosNoHistorico = historico.reduce((soma, d) => soma + d.concluidos, 0);
+  $('#resumo-previsao').textContent = `${restantes} cartão(ões) restante(s) · ${periodo}, `
+    + `com ${concluidosNoHistorico} concluído(s) · ${SIMULACOES_PADRAO.toLocaleString('pt-BR')} cenários`;
+  $('#aviso-previsao').textContent = r.aviso ?? ''; // critério 3: menos de 10 dias de histórico
+  $('#tabela-previsao').replaceChildren(
+    linhaDeTabela('th', ['Chance de terminar', 'Até o dia', 'Dias a partir de hoje']),
+    ...r.previsoes.map((p) => linhaDeTabela('td', [`${p.chance}%`, diaCurto(p.dia), String(p.dias)])),
+  );
 }
 
 // ---------- Início ----------
